@@ -95,6 +95,11 @@
         </div>
       </div>
 
+      <div id="catalogTargetBanner" class="hidden mx-2.5 mt-2 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-[11px] text-emerald-200 flex items-center justify-between gap-1.5 shrink-0">
+        <span class="truncate">Plantar en: <strong id="catalogTargetName">Maceta</strong></span>
+        <button id="btnClearCatalogTarget" type="button" class="px-1.5 py-0.5 rounded bg-zinc-900/80 hover:bg-zinc-800 text-[10px] text-zinc-300 shrink-0" title="Agregar suelto al piso">Al piso</button>
+      </div>
+
       <div id="catalogGrid" class="p-2.5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 overflow-y-auto overscroll-contain flex-1 min-h-0">
         <!-- Populated by JS -->
       </div>
@@ -151,7 +156,7 @@
         <span>•</span>
         <span>Arrastrar + <kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Shift</kbd> = solo subir/bajar</span>
         <span>•</span>
-        <span><kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Alt</kbd> + arrastrar = separar de maceta</span>
+        <span>Arrastrar maceta/cantero = mueve su contenido</span>
         <span>•</span>
         <span>Supr = borrar</span>
       </div>
@@ -582,6 +587,24 @@
         <div class="flex gap-2">
           <button id="btnApplyPngCleaner" type="button" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">Aplicar al layer</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Blocked Action Helper Modal -->
+  <div id="blockedActionModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-zinc-900 border border-amber-500/50 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+        </div>
+        <div>
+          <h3 id="blockedActionTitle" class="text-sm font-semibold text-zinc-100">Falta sustrato en el cantero</h3>
+          <p id="blockedActionMsg" class="text-xs text-zinc-300 mt-1 leading-relaxed"></p>
+        </div>
+      </div>
+      <div id="blockedActionButtons" class="flex flex-wrap justify-end gap-2 pt-2 border-t border-zinc-800">
+        <!-- Populated dynamically -->
       </div>
     </div>
   </div>

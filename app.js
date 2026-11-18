@@ -67,6 +67,7 @@ let cleanerTargetUid = null;
 let pendingContainerItem = null;
 let pendingExistingContainerUid = null;
 let newPlantImageDataUrl = null;
+let catalogTargetContainerUid = null;
 
 const stageWrapper = document.getElementById("stageWrapper");
 const canvas = document.getElementById("mainCanvas");
@@ -292,7 +293,7 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
   const yPx = yNorm * canvas.height;
   const persp = perspective.autoScale ? getPerspectiveFactorAtY(yPx) : 1;
   const targetRealH = heightMOverride !== null ? heightMOverride : (item.defaultHeightM || 1.2);
-  const scale = Math.max(0.08, heightMToScale(targetRealH, persp));
+  const scale = Math.max(0.015, heightMToScale(targetRealH, persp));
 
   return {
     uid: "layer_" + (nextUid++),
@@ -845,9 +846,8 @@ canvas.addEventListener("pointerdown", (e) => {
 
   if (hitLayer) {
     selectedId = hitLayer.uid;
-    // Alt detaches; otherwise move root container + all attached plants/macetas together!
-    const root = e.altKey ? hitLayer : getRootContainer(hitLayer);
-    const group = e.altKey ? [hitLayer] : [root, ...getAllDescendants(root.uid)];
+    // Move hitLayer + its descendants (plant -> only plant; maceta -> maceta + plants; cantero -> all inside)
+    const group = e.altKey ? [hitLayer] : [hitLayer, ...getAllDescendants(hitLayer.uid)];
     if (e.altKey && (hitLayer.containerUid || hitLayer.parentContainerUid)) {
       hitLayer.containerUid = null;
       hitLayer.parentContainerUid = null;
@@ -857,14 +857,14 @@ canvas.addEventListener("pointerdown", (e) => {
     dragState = {
       type: "move",
       layer: hitLayer,
-      anchor: root,
+      anchor: hitLayer,
       group,
-      startX: root.x,
-      lastX: root.x,
-      lastY: root.y,
-      offsetX: x - root.x,
-      offsetY: y - root.y,
-      prevPersp: perspective.autoScale ? getPerspectiveFactorAtY(root.y) : 1,
+      startX: hitLayer.x,
+      lastX: hitLayer.x,
+      lastY: hitLayer.y,
+      offsetX: x - hitLayer.x,
+      offsetY: y - hitLayer.y,
+      prevPersp: perspective.autoScale ? getPerspectiveFactorAtY(hitLayer.y) : 1,
       shiftLocked: false
     };
     canvas.style.cursor = "grabbing";
@@ -925,7 +925,7 @@ canvas.addEventListener("pointermove", (e) => {
       member.x += dx;
       member.y += dy;
       if (scaleRatio !== 1) {
-        member.scale = Math.max(0.08, Math.min(2.8, member.scale * scaleRatio));
+        member.scale = Math.max(0.015, Math.min(2.8, member.scale * scaleRatio));
         member.perspFactor = getPerspectiveFactorAtY(member.y);
         clampScaleToPotIfNeeded(member);
       }
@@ -938,7 +938,7 @@ canvas.addEventListener("pointermove", (e) => {
     const rect = getLayerRect(l);
     const distNow = Math.max(10, Math.hypot(x - l.x, y - (l.y - rect.h / 2)));
     const factor = distNow / dragState.distStart;
-    l.scale = Math.max(0.08, Math.min(2.8, dragState.origScale * factor));
+    l.scale = Math.max(0.015, Math.min(2.8, dragState.origScale * factor));
     clampScaleToPotIfNeeded(l);
     syncInspectorValues();
     draw();
@@ -1007,8 +1007,74 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
+
+function showBlockedActionModal({ title, message, buttons }) {
+  const modal = document.getElementById("blockedActionModal");
+  document.getElementById("blockedActionTitle").textContent = title;
+  document.getElementById("blockedActionMsg").textContent = message;
+  const btnWrap = document.getElementById("blockedActionButtons");
+  btnWrap.innerHTML = "";
+  for (const b of buttons) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = b.primary
+      ? "px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition"
+      : "px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-medium text-zinc-200 transition";
+    btn.textContent = b.label;
+    btn.addEventListener("click", async () => {
+      modal.classList.add("hidden");
+      if (b.onClick) await b.onClick();
+    });
+    btnWrap.appendChild(btn);
+  }
+  modal.classList.remove("hidden");
+}
+
+async function ensureContainerHasSubstrateOrResolve(containerLayer, onResolved) {
+  if (!containerLayer || containerLayer.isGroundSoil || (containerLayer.liters ?? 45) > 0) {
+    return true;
+  }
+  const catItem = catalog.find(i => i.id === containerLayer.itemId);
+  const defaultLiters = catItem?.liters && catItem.liters > 0 ? catItem.liters : 150;
+  showBlockedActionModal({
+    title: `${containerLayer.name} no tiene sustrato (0 L)`,
+    message: `No podés plantar directo en un cantero con 0 L de sustrato. Agregale sustrato o meté una maceta con tierra adentro.`,
+    buttons: [
+      {
+        label: `+ Agregar sustrato (${defaultLiters} L)`,
+        primary: true,
+        onClick: async () => {
+          containerLayer.liters = defaultLiters;
+          await refreshContainerLayerAppearance(containerLayer);
+          syncUI();
+          showToast(`Sustrato agregado: ${defaultLiters} L`);
+          if (onResolved) await onResolved();
+        }
+      },
+      {
+        label: "Elegir maceta para meter adentro",
+        primary: false,
+        onClick: () => {
+          activeFilter = "macetas";
+          document.querySelectorAll(".filter-btn").forEach(b => {
+            b.className = b.dataset.filter === "macetas"
+              ? "filter-btn px-1 py-1 rounded text-[10px] font-medium bg-emerald-600 text-white"
+              : "filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200";
+          });
+          renderCatalog();
+          showToast("Elegí una maceta del catálogo para meterla en el cantero");
+        }
+      },
+      { label: "Cancelar", primary: false }
+    ]
+  });
+  return false;
+}
+
 // Helper: place plant inside a container layer
 async function addPlantInsideContainer(plantItem, containerLayer) {
+  const ok = await ensureContainerHasSubstrateOrResolve(containerLayer, () => addPlantInsideContainer(plantItem, containerLayer));
+  if (!ok) return;
   await loadImage(plantItem.src);
   const cItem = catalog.find(x => x.id === containerLayer.itemId);
   const cRect = getLayerRect(containerLayer);
@@ -1184,8 +1250,30 @@ function renderCatalog() {
         return;
       }
 
+      const targetCont = catalogTargetContainerUid ? layers.find(l => l.uid === catalogTargetContainerUid) : null;
+
       if (item.kind === "container") {
+        // If a cantero is targeted and user clicks a maceta, place maceta inside cantero!
+        if (targetCont && !item.isGroundSoil && (targetCont.shape === "cantero_rect" || targetCont.shape === "jardinera_alta" || targetCont.isGroundSoil) && item.shape !== "cantero_rect") {
+          await loadImage(item.src);
+          const cRect = getLayerRect(targetCont);
+          const newMaceta = createLayer(item, targetCont.x / canvas.width, Math.min(0.95, (cRect.y + cRect.h * 0.35) / canvas.height));
+          newMaceta.parentContainerUid = targetCont.uid;
+          const idx = layers.findIndex(l => l.uid === targetCont.uid);
+          if (idx >= 0) layers.splice(idx + 1, 0, newMaceta);
+          else layers.push(newMaceta);
+          selectedId = newMaceta.uid;
+          syncUI();
+          draw();
+          showToast(`${item.name} colocada dentro de ${targetCont.name}`);
+          return;
+        }
         openPotPlantPicker(item, null);
+        return;
+      }
+
+      if (targetCont) {
+        await addPlantInsideContainer(item, targetCont);
         return;
       }
 
@@ -1263,26 +1351,109 @@ function renderLayersList() {
       ? `<span class="text-emerald-400/80 font-mono text-[11px] shrink-0">↳</span>`
       : "";
 
+    row.draggable = true;
+    row.dataset.uid = l.uid;
+
     row.innerHTML = `
-      <div class="flex items-center gap-1.5 min-w-0">
+      <div class="flex items-center gap-1 min-w-0 flex-1">
         ${childArrow}
         <img src="${l.src}" class="w-6 h-6 object-contain rounded bg-zinc-800 shrink-0" alt="" />
         <span class="truncate font-medium">${l.name}</span>
         ${warnDot}
         <span class="text-[10px] text-zinc-500 shrink-0">${hM.toFixed(1)}m</span>
       </div>
-      <button type="button" class="vis-btn p-1 rounded hover:bg-zinc-800 ${l.visible ? "text-zinc-300" : "text-zinc-600"}" title="Mostrar/Ocultar">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="${l.visible ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18"}"/>
-        </svg>
-      </button>
+      <div class="flex items-center gap-0.5 shrink-0">
+        ${depth > 0 ? `<button type="button" class="detach-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-amber-300" title="Sacar al piso (desvincular)">⇤</button>` : ""}
+        <button type="button" class="up-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-100" title="Subir capa">↑</button>
+        <button type="button" class="down-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-100" title="Bajar capa">↓</button>
+        <button type="button" class="vis-btn p-1 rounded hover:bg-zinc-800 ${l.visible ? "text-zinc-300" : "text-zinc-600"}" title="Mostrar/Ocultar">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="${l.visible ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18"}"/>
+          </svg>
+        </button>
+      </div>
     `;
+
+    row.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", l.uid);
+      row.classList.add("opacity-50");
+    });
+    row.addEventListener("dragend", () => row.classList.remove("opacity-50"));
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      row.classList.add("ring-1", "ring-emerald-400");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("ring-1", "ring-emerald-400"));
+    row.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      row.classList.remove("ring-1", "ring-emerald-400");
+      const draggedUid = e.dataTransfer.getData("text/plain");
+      if (!draggedUid || draggedUid === l.uid) return;
+      const dragged = layers.find(x => x.uid === draggedUid);
+      if (!dragged) return;
+      if (getAllDescendants(dragged.uid).some(d => d.uid === l.uid)) return;
+
+      if (l.kind === "container") {
+        // Nest inside container
+        if (dragged.kind === "plant") {
+          const ok = await ensureContainerHasSubstrateOrResolve(l, () => {
+            dragged.containerUid = l.uid;
+            clampScaleToPotIfNeeded(dragged);
+            syncUI();
+            draw();
+          });
+          if (!ok) return;
+          dragged.containerUid = l.uid;
+          clampScaleToPotIfNeeded(dragged);
+          showToast(`${dragged.name} metida en ${l.name}`);
+        } else {
+          dragged.parentContainerUid = l.uid;
+          showToast(`${dragged.name} metida en ${l.name}`);
+        }
+      } else {
+        // Reorder z-index in layers array
+        const fromIdx = layers.findIndex(x => x.uid === draggedUid);
+        const toIdx = layers.findIndex(x => x.uid === l.uid);
+        if (fromIdx >= 0 && toIdx >= 0) {
+          const [moved] = layers.splice(fromIdx, 1);
+          layers.splice(toIdx, 0, moved);
+        }
+      }
+      syncUI();
+      draw();
+    });
 
     row.addEventListener("click", (e) => {
       if (e.target.closest(".vis-btn")) {
         l.visible = !l.visible;
         renderLayersList();
         draw();
+        return;
+      }
+      if (e.target.closest(".detach-btn")) {
+        l.containerUid = null;
+        l.parentContainerUid = null;
+        showToast(`${l.name} sacada al piso`);
+        syncUI();
+        draw();
+        return;
+      }
+      if (e.target.closest(".up-btn")) {
+        const idx = layers.findIndex(x => x.uid === l.uid);
+        if (idx >= 0 && idx < layers.length - 1) {
+          [layers[idx], layers[idx + 1]] = [layers[idx + 1], layers[idx]];
+          renderLayersList();
+          draw();
+        }
+        return;
+      }
+      if (e.target.closest(".down-btn")) {
+        const idx = layers.findIndex(x => x.uid === l.uid);
+        if (idx > 0) {
+          [layers[idx], layers[idx - 1]] = [layers[idx - 1], layers[idx]];
+          renderLayersList();
+          draw();
+        }
         return;
       }
       selectedId = l.uid;
@@ -1510,9 +1681,29 @@ function syncUI() {
     empty.classList.remove("hidden");
     ctrls.classList.add("hidden");
   }
+  if (sel && sel.kind === "container") {
+    catalogTargetContainerUid = sel.uid;
+  } else if (!layers.some(l => l.uid === catalogTargetContainerUid)) {
+    catalogTargetContainerUid = null;
+  }
+  const targetBanner = document.getElementById("catalogTargetBanner");
+  const targetCont = catalogTargetContainerUid ? layers.find(l => l.uid === catalogTargetContainerUid) : null;
+  if (targetCont) {
+    document.getElementById("catalogTargetName").textContent = targetCont.name;
+    targetBanner.classList.remove("hidden");
+  } else {
+    targetBanner.classList.add("hidden");
+  }
+
   document.getElementById("scaleStatusText").textContent = `Escala: 1 m ≈ ${Math.round(calibration.pxPerMeter)} px`;
   renderLayersList();
 }
+
+document.getElementById("btnClearCatalogTarget").addEventListener("click", () => {
+  catalogTargetContainerUid = null;
+  document.getElementById("catalogTargetBanner").classList.add("hidden");
+  showToast("Modo libre: las plantas nuevas se agregan al piso");
+});
 
 function setMaskMode(active) {
   maskMode = active;
@@ -1598,7 +1789,9 @@ document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
     showToast("Marcá dos puntos más separados");
     return;
   }
-  calibration.pxPerMeter = distPx / meters;
+  const calY = Math.max(p1.y, p2.y);
+  const calPersp = perspective.autoScale ? getPerspectiveFactorAtY(calY) : 1;
+  calibration.pxPerMeter = (distPx / meters) / Math.max(0.15, calPersp);
   setCalibrationMode(false);
   syncUI();
   draw();
@@ -1674,9 +1867,11 @@ document.getElementById("ctrlParentContainerSelect").addEventListener("change", 
   draw();
 });
 
-document.getElementById("btnPlantInContainer").addEventListener("click", () => {
+document.getElementById("btnPlantInContainer").addEventListener("click", async () => {
   const sel = getSelectedLayer();
   if (!sel || sel.kind !== "container") return;
+  const ok = await ensureContainerHasSubstrateOrResolve(sel, () => openPotPlantPicker(null, sel.uid));
+  if (!ok) return;
   openPotPlantPicker(null, sel.uid);
 });
 
@@ -1743,10 +1938,24 @@ document.getElementById("ctrlBrushSize").addEventListener("input", (e) => {
   document.getElementById("valBrushSize").textContent = brushSize + " px";
 });
 
-document.getElementById("ctrlContainerSelect").addEventListener("change", (e) => {
+document.getElementById("ctrlContainerSelect").addEventListener("change", async (e) => {
   const sel = getSelectedLayer();
   if (!sel) return;
-  sel.containerUid = e.target.value || null;
+  const newUid = e.target.value || null;
+  if (newUid) {
+    const targetC = layers.find(l => l.uid === newUid);
+    const ok = await ensureContainerHasSubstrateOrResolve(targetC, async () => {
+      sel.containerUid = newUid;
+      clampScaleToPotIfNeeded(sel);
+      syncUI();
+      draw();
+    });
+    if (!ok) {
+      e.target.value = sel.containerUid || "";
+      return;
+    }
+  }
+  sel.containerUid = newUid;
   clampScaleToPotIfNeeded(sel);
   syncUI();
   draw();
@@ -1790,7 +1999,7 @@ document.getElementById("btnFixRealism").addEventListener("click", () => {
     }
   }
   const pf = perspective.autoScale ? (sel.perspFactor || 1) : 1;
-  sel.scale = Math.max(0.08, heightMToScale(targetM, pf));
+  sel.scale = Math.max(0.015, heightMToScale(targetM, pf));
   syncUI();
   draw();
   showToast(`Ajustada a ${targetM.toFixed(2)} m`);
