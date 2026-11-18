@@ -230,7 +230,7 @@ function projectBox(W, H, D, yawDeg, pitchDeg, perspStrength, cw, ch) {
   return proj.map(([sx, sy, rz]) => [cx + sx * scale, cy + sy * scale, rz]);
 }
 
-function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspStrength, isGroundSoil, mulch, isEmpty, customWidthM, customHeightM) {
+function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspStrength, isGroundSoil, mulch, isEmpty, customWidthM, customHeightM, customDepthM) {
   let W = 240, H = 120, D = 110;
   if (shape === "cantero_rect") { W = 320; H = 105; D = 125; }
   else if (shape === "maceta_cubo") { W = 175; H = 175; D = 175; }
@@ -238,14 +238,43 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
   else if (shape === "tierra_cantero") { W = 330; H = 36; D = 150; }
 
   if (customWidthM && customHeightM && customHeightM > 0) {
-    const aspect = Math.max(0.35, Math.min(4.5, customWidthM / customHeightM));
-    H = 130;
+    const aspect = Math.max(0.25, Math.min(12.0, customWidthM / customHeightM));
+    const depthAspect = customDepthM && customDepthM > 0 ? Math.max(0.2, Math.min(6.0, customDepthM / customHeightM)) : 0.85;
+    H = 140;
     W = Math.round(H * aspect);
-    D = Math.round(Math.min(180, Math.max(70, W * 0.42)));
+    D = Math.round(H * depthAspect);
   }
 
-  const cw = Math.max(380, Math.min(720, Math.round(W * 1.45)));
-  const ch = Math.max(240, Math.min(540, Math.round(H * 2.3 + 90)));
+  // Compute tight bounding box first so canvas aspect matches exact 3D projection without clipping or padding distortion
+  const radY = (yawDeg * Math.PI) / 180;
+  const cosY = Math.cos(radY), sinY = Math.sin(radY);
+  const radP = (Math.max(4, Math.min(72, pitchDeg)) * Math.PI) / 180;
+  const cosP = Math.cos(radP), sinP = Math.sin(radP);
+  const hw = W / 2, hd = D / 2;
+  const testPts = [
+    [-hw, 0, -hd], [hw, 0, -hd], [hw, 0, hd], [-hw, 0, hd],
+    [-hw, H, -hd], [hw, H, -hd], [hw, H, hd], [-hw, H, hd]
+  ].map(([x, y, z]) => {
+    const rx = x * cosY - z * sinY;
+    const rz0 = x * sinY + z * cosY;
+    const ry1 = y * cosP - rz0 * sinP;
+    const rz1 = y * sinP + rz0 * cosP;
+    const p = 1 / Math.max(0.35, 1 - rz1 * perspStrength);
+    return [rx * p, -ry1 * p];
+  });
+  let tMinX = Infinity, tMaxX = -Infinity, tMinY = Infinity, tMaxY = -Infinity;
+  for (const [sx, sy] of testPts) {
+    if (sx < tMinX) tMinX = sx;
+    if (sx > tMaxX) tMaxX = sx;
+    if (sy < tMinY) tMinY = sy;
+    if (sy > tMaxY) tMaxY = sy;
+  }
+  const projW = Math.max(40, tMaxX - tMinX);
+  const projH = Math.max(40, tMaxY - tMinY);
+  const fitScale = Math.min(1600 / projW, 600 / projH, 1.4);
+  const cw = Math.max(180, Math.round(projW * fitScale + 12));
+  const ch = Math.max(140, Math.round(projH * fitScale + 12));
+
   const canvas = document.createElement("canvas");
   canvas.width = cw;
   canvas.height = ch;
@@ -446,7 +475,8 @@ export function getContainerRenderSrc({
   mulch = false,
   liters = 45,
   customWidthM = null,
-  customHeightM = null
+  customHeightM = null,
+  customDepthM = null
 }) {
   const normYaw = ((Math.round(viewAngle) % 360) + 360) % 360;
   const normPitch = Math.max(5, Math.min(68, Math.round(viewPitch)));
@@ -454,8 +484,9 @@ export function getContainerRenderSrc({
   const isEmpty = !isGroundSoil && liters <= 0;
   const wKey = customWidthM ? customWidthM.toFixed(2) : "d";
   const hKey = customHeightM ? customHeightM.toFixed(2) : "d";
+  const dKey = customDepthM ? customDepthM.toFixed(2) : "d";
   const texReady = texCache.size > 0 ? 1 : 0;
-  const key = `${texReady}|${shape}|${material}|${colorId}|${normYaw}|${normPitch}|${pBucket}|${isGroundSoil ? 1 : 0}|${mulch ? 1 : 0}|${isEmpty ? 1 : 0}|${wKey}|${hKey}`;
+  const key = `${texReady}|${shape}|${material}|${colorId}|${normYaw}|${normPitch}|${pBucket}|${isGroundSoil ? 1 : 0}|${mulch ? 1 : 0}|${isEmpty ? 1 : 0}|${wKey}|${hKey}|${dKey}`;
   if (renderCache.has(key)) return renderCache.get(key);
 
   let dataUrl;
@@ -464,7 +495,7 @@ export function getContainerRenderSrc({
   } else if (shape === "maceta_cilindro") {
     dataUrl = renderCylinderContainer(material, colorId, normYaw, normPitch, isEmpty, customWidthM, customHeightM);
   } else {
-    dataUrl = renderBoxContainer(shape, material, colorId, normYaw, normPitch, perspStrength, isGroundSoil, mulch, isEmpty, customWidthM, customHeightM);
+    dataUrl = renderBoxContainer(shape, material, colorId, normYaw, normPitch, perspStrength, isGroundSoil, mulch, isEmpty, customWidthM, customHeightM, customDepthM);
   }
   renderCache.set(key, dataUrl);
   return dataUrl;

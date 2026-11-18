@@ -381,6 +381,7 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
     locked: false,
     customWidthM: item.customWidthM || null,
     customHeightM: item.customHeightM || null,
+    customDepthM: item.customDepthM || null,
     liters: item.liters ?? 45,
     isGroundSoil: !!item.isGroundSoil,
     shape: item.shape || "cantero_rect",
@@ -1593,7 +1594,8 @@ async function refreshContainerLayerAppearance(layer) {
     mulch: !!layer.mulch,
     liters: layer.liters ?? 45,
     customWidthM: layer.customWidthM,
-    customHeightM: layer.customHeightM
+    customHeightM: layer.customHeightM,
+    customDepthM: layer.customDepthM
   });
   await loadImage(newSrc);
   layer.src = newSrc;
@@ -1669,8 +1671,9 @@ function syncBotanicalInspector(sel) {
       potWrap.classList.remove("hidden");
       soilNote.classList.add("hidden");
       parentWrap.classList.remove("hidden");
-      document.getElementById("ctrlCustomWidthM").value = (sel.customWidthM || wM).toFixed(2);
-      document.getElementById("ctrlCustomHeightM").value = (sel.customHeightM || hM).toFixed(2);
+      document.getElementById("ctrlCustomWidthM").value = wM.toFixed(2);
+      document.getElementById("ctrlCustomHeightM").value = hM.toFixed(2);
+      document.getElementById("ctrlCustomDepthM").value = (sel.customDepthM || Math.max(0.25, hM * 0.9)).toFixed(2);
       const liters = sel.liters ?? 45;
       document.getElementById("ctrlPotLiters").value = liters;
       document.getElementById("valPotLiters").textContent = `${liters} L`;
@@ -1955,10 +1958,12 @@ document.getElementById("ctrlContainerPitch").addEventListener("input", async (e
 async function applyCustomContainerDims() {
   const sel = getSelectedLayer();
   if (!sel || sel.kind !== "container") return;
-  const wM = Math.max(0.2, Math.min(5.0, Number(document.getElementById("ctrlCustomWidthM").value) || 1.2));
+  const wM = Math.max(0.2, Math.min(12.0, Number(document.getElementById("ctrlCustomWidthM").value) || 1.2));
   const hM = Math.max(0.15, Math.min(2.5, Number(document.getElementById("ctrlCustomHeightM").value) || 0.45));
+  const dM = Math.max(0.15, Math.min(4.0, Number(document.getElementById("ctrlCustomDepthM").value) || 0.45));
   sel.customWidthM = wM;
   sel.customHeightM = hM;
+  sel.customDepthM = dM;
   await refreshContainerLayerAppearance(sel);
   const pf = perspective.autoScale ? (sel.perspFactor || getPerspectiveFactorAtY(sel.y)) : 1;
   sel.scale = Math.max(0.015, heightMToScale(hM, pf));
@@ -1967,6 +1972,7 @@ async function applyCustomContainerDims() {
 }
 document.getElementById("ctrlCustomWidthM").addEventListener("change", applyCustomContainerDims);
 document.getElementById("ctrlCustomHeightM").addEventListener("change", applyCustomContainerDims);
+document.getElementById("ctrlCustomDepthM").addEventListener("change", applyCustomContainerDims);
 
 document.getElementById("ctrlContainerMaterial").addEventListener("change", async (e) => {
   const sel = getSelectedLayer();
