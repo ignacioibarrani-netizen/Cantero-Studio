@@ -1,5 +1,5 @@
 import { SAMPLE_BG_SRC, BUILTIN_ITEMS } from "./data/catalog.js";
-import { CONTAINER_MATERIALS, getContainerRenderSrc, preloadContainerTextures } from "./utils/containerRenderer.js";
+import { CONTAINER_MATERIALS, getContainerRenderSrc, getContainerRenderMeta, preloadContainerTextures } from "./utils/containerRenderer.js";
 
 const CUSTOM_STORAGE_KEY = "cantero_custom_catalog_v1";
 
@@ -221,10 +221,10 @@ function getPerspectiveFactorAtY(yPx) {
   const botY = ((q.bl.y + q.br.y) / 2) * ch;
   const topW = Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
   const botW = Math.hypot(q.br.x - q.bl.x, q.br.y - q.bl.y);
-  const ratio = botW > 0.01 ? Math.max(0.25, Math.min(1.0, topW / botW)) : 0.65;
+  const ratio = botW > 0.01 ? Math.max(0.15, Math.min(1.2, topW / botW)) : 0.65;
   const span = Math.max(20, botY - topY);
-  const t = Math.max(-0.2, Math.min(1.35, (yPx - topY) / span));
-  return ratio + (1 - ratio) * t;
+  const t = (yPx - topY) / span;
+  return Math.max(0.15, Math.min(2.5, ratio + (1 - ratio) * t));
 }
 
 function getEffectivePxPerMeterAtFactor(pf) {
@@ -239,9 +239,15 @@ function heightMToScale(heightM, perspFactor = 1) {
   return (heightM * effPxPerM) / ch;
 }
 
+function getLayerWallRatio(layer) {
+  if (layer.kind !== "container" || layer.isGroundSoil) return 1;
+  const meta = getContainerRenderMeta(layer.src);
+  return meta.frontWallRatio || 1;
+}
+
 function getLayerRealHeightM(layer) {
   const ch = canvas.height || 714;
-  const px = ch * layer.scale;
+  const px = ch * layer.scale * getLayerWallRatio(layer);
   const pf = perspective.autoScale ? (layer.perspFactor || getPerspectiveFactorAtY(layer.y)) : 1;
   const effPxPerM = getEffectivePxPerMeterAtFactor(pf);
   return px / Math.max(5, effPxPerM);
@@ -356,7 +362,8 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
   const yPx = yNorm * canvas.height;
   const persp = perspective.autoScale ? getPerspectiveFactorAtY(yPx) : 1;
   const targetRealH = heightMOverride !== null ? heightMOverride : (item.defaultHeightM || 1.2);
-  const scale = Math.max(0.015, heightMToScale(targetRealH, persp));
+  const wallRatio = (item.kind === "container" && !item.isGroundSoil) ? (getContainerRenderMeta(item.src).frontWallRatio || 1) : 1;
+  const scale = Math.max(0.015, heightMToScale(targetRealH / wallRatio, persp));
 
   return {
     uid: "layer_" + (nextUid++),
@@ -1583,6 +1590,7 @@ function renderLayersList() {
 
 async function refreshContainerLayerAppearance(layer) {
   if (!layer || layer.kind !== "container") return;
+  const prevRealH = layer.customHeightM || getLayerRealHeightM(layer);
   const newSrc = getContainerRenderSrc({
     shape: layer.shape || "cantero_rect",
     material: layer.material || "cemento",
@@ -1600,6 +1608,11 @@ async function refreshContainerLayerAppearance(layer) {
   await loadImage(newSrc);
   layer.src = newSrc;
   layer.origSrc = newSrc;
+  if (!layer.isGroundSoil) {
+    const pf = perspective.autoScale ? (layer.perspFactor || getPerspectiveFactorAtY(layer.y)) : 1;
+    const wallRatio = getLayerWallRatio(layer);
+    layer.scale = Math.max(0.015, heightMToScale(prevRealH / wallRatio, pf));
+  }
   renderLayersList();
   draw();
 }
@@ -1895,7 +1908,7 @@ document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
     return;
   }
   pushUndoSnapshot();
-  const calY = (p1.y + p2.y) / 2;
+  const calY = Math.abs(p2.y - p1.y) > Math.abs(p2.x - p1.x) ? Math.max(p1.y, p2.y) : (p1.y + p2.y) / 2;
   calibration.refPxPerMeter = distPx / meters;
   calibration.refY = calY;
   const calPersp = perspective.autoScale ? getPerspectiveFactorAtY(calY) : 1;
@@ -1966,13 +1979,22 @@ async function applyCustomContainerDims() {
   sel.customDepthM = dM;
   await refreshContainerLayerAppearance(sel);
   const pf = perspective.autoScale ? (sel.perspFactor || getPerspectiveFactorAtY(sel.y)) : 1;
-  sel.scale = Math.max(0.015, heightMToScale(hM, pf));
+  const wallRatio = getLayerWallRatio(sel);
+  sel.scale = Math.max(0.015, heightMToScale(hM / wallRatio, pf));
   syncInspectorValues();
   draw();
 }
-document.getElementById("ctrlCustomWidthM").addEventListener("change", applyCustomContainerDims);
-document.getElementById("ctrlCustomHeightM").addEventListener("change", applyCustomContainerDims);
-document.getElementById("ctrlCustomDepthM").addEventListener("change", applyCustomContainerDims);
+["ctrlCustomWidthM", "ctrlCustomHeightM", "ctrlCustomDepthM"].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener("change", applyCustomContainerDims);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      applyCustomContainerDims();
+      el.blur();
+    }
+  });
+});
 
 document.getElementById("ctrlContainerMaterial").addEventListener("change", async (e) => {
   const sel = getSelectedLayer();

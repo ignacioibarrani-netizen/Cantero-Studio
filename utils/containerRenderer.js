@@ -74,6 +74,12 @@ const TEXTURE_URLS = {
 
 const texCache = new Map();
 const renderCache = new Map();
+const renderMetaCache = new Map();
+
+export function getContainerRenderMeta(src) {
+  return renderMetaCache.get(src) || { frontWallRatio: 1, widthToWallRatio: 1, depthToWallRatio: 1 };
+}
+
 
 export async function preloadContainerTextures() {
   const entries = Object.entries(TEXTURE_URLS);
@@ -340,7 +346,16 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
   ctx.closePath();
   ctx.stroke();
 
-  return canvas.toDataURL("image/png");
+  // Measure exact vertical front wall height in pixels (between bottom-front and top-front edge)
+  const frontWallPx = Math.max(10, Math.abs(pts[3][1] - pts[7][1]));
+  const frontWallRatio = Math.max(0.15, Math.min(1.0, frontWallPx / ch));
+  const dataUrl = canvas.toDataURL("image/png");
+  renderMetaCache.set(dataUrl, {
+    frontWallRatio,
+    widthToWallRatio: W / H,
+    depthToWallRatio: D / H
+  });
+  return dataUrl;
 }
 
 function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty, customWidthM, customHeightM) {
@@ -430,7 +445,15 @@ function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty,
     paintSoilPoly(ctx, innerPts, false);
   }
 
-  return canvas.toDataURL("image/png");
+  const frontWallPx = Math.max(10, botY - topY);
+  const frontWallRatio = Math.max(0.15, Math.min(1.0, frontWallPx / ch));
+  const dataUrl = canvas.toDataURL("image/png");
+  renderMetaCache.set(dataUrl, {
+    frontWallRatio,
+    widthToWallRatio: aspect,
+    depthToWallRatio: aspect
+  });
+  return dataUrl;
 }
 
 function renderOrganicSoilBed(mulch = false, pitchDeg = 22) {
