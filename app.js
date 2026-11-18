@@ -57,6 +57,9 @@ const calibration = {
 const perspective = {
   visible: false,
   autoScale: true,
+  gridWidthM: 4.0,
+  gridDepthM: 5.0,
+  verticalMultiplier: 1.0,
   // Normalized [0..1] quad: tl, tr (back/far), br, bl (front/near)
   quad: {
     tl: { x: 0.28, y: 0.56 },
@@ -193,6 +196,7 @@ function setViewerZoom(newZoom, pivotClientX = null, pivotClientY = null) {
   }
   viewZoom = clamped;
   if (Math.abs(viewZoom - 1) < 0.03) {
+    rebuildGroundHomography();
     viewZoom = 1;
     viewPanX = 0;
     viewPanY = 0;
@@ -215,29 +219,152 @@ document.getElementById("btnZoomReset").addEventListener("click", () => {
   applyViewTransform();
 });
 
-// Perspective Math
-function getPerspectiveFactorAtY(yPx) {
+// Perspective & Homography Math
+
+// === 3D Ground-Plane Homography Engine ===
+let homographyFwd = null; // 3x3 array
+let homographyInv = null; // 3x3 array
+
+function solve8x8(A, b) {
+  const n = 8;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let maxRow = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(M[r][col]) > Math.abs(M[maxRow][col])) maxRow = r;
+    }
+    [M[col], M[maxRow]] = [M[maxRow], M[col]];
+    const piv = M[col][col];
+    if (Math.abs(piv) < 1e-10) return null;
+    for (let j = col; j <= n; j++) M[col][j] /= piv;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col];
+      for (let j = col; j <= n; j++) M[r][j] -= f * M[col][j];
+    }
+  }
+  return M.map(row => row[n]);
+}
+
+function invert3x3(m) {
+  const [a, b, c] = m[0];
+  const [d, e, f] = m[1];
+  const [g, h, i] = m[2];
+  const A = e * i - f * h;
+  const B = -(d * i - f * g);
+  const C = d * h - e * g;
+  const D = -(b * i - c * h);
+  const E = a * i - c * g;
+  const F = -(a * h - b * g);
+  const G = b * f - c * e;
+  const H = -(a * f - c * d);
+  const I = a * e - b * d;
+  const det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-12) return null;
+  const invDet = 1 / det;
+  return [
+    [A * invDet, D * invDet, G * invDet],
+    [B * invDet, E * invDet, H * invDet],
+    [C * invDet, F * invDet, I * invDet]
+  ];
+}
+
+function rebuildGroundHomography() {
+  const cw = canvas.width || 1000;
   const ch = canvas.height || 714;
   const q = perspective.quad;
-  const topY = ((q.tl.y + q.tr.y) / 2) * ch;
-  const botY = ((q.bl.y + q.br.y) / 2) * ch;
-  const topW = Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
-  const botW = Math.hypot(q.br.x - q.bl.x, q.br.y - q.bl.y);
-  const ratio = botW > 0.01 ? Math.max(0.15, Math.min(1.2, topW / botW)) : 0.65;
-  const span = Math.max(20, botY - topY);
-  const t = (yPx - topY) / span;
-  return Math.max(0.15, Math.min(2.5, ratio + (1 - ratio) * t));
+  const W = Math.max(0.5, perspective.gridWidthM || 4.0);
+  const D = Math.max(0.5, perspective.gridDepthM || 5.0);
+
+  const src = [[0, 0], [W, 0], [W, D], [0, D]];
+  const dst = [
+    [q.tl.x * cw, q.tl.y * ch],
+    [q.tr.x * cw, q.tr.y * ch],
+    [q.br.x * cw, q.br.y * ch],
+    [q.bl.x * cw, q.bl.y * ch]
+  ];
+
+  const A = [];
+  const b = [];
+  for (let i = 0; i < 4; i++) {
+    const [u, v] = src[i];
+    const [x, y] = dst[i];
+    A.push([u, v, 1, 0, 0, 0, -u * x, -v * x]);
+    b.push(x);
+    A.push([0, 0, 0, u, v, 1, -u * y, -v * y]);
+    b.push(y);
+  }
+  const h = solve8x8(A, b);
+  if (!h) {
+    homographyFwd = null;
+    homographyInv = null;
+    return;
+  }
+  homographyFwd = [
+    [h[0], h[1], h[2]],
+    [h[3], h[4], h[5]],
+    [h[6], h[7], 1]
+  ];
+  homographyInv = invert3x3(homographyFwd);
+}
+
+function groundToScreen(u, v) {
+  if (!homographyFwd) rebuildGroundHomography();
+  if (!homographyFwd) return { x: 0, y: 0 };
+  const m = homographyFwd;
+  const w = m[2][0] * u + m[2][1] * v + m[2][2];
+  const safeW = Math.abs(w) < 1e-5 ? (w >= 0 ? 1e-5 : -1e-5) : w;
+  return {
+    x: (m[0][0] * u + m[0][1] * v + m[0][2]) / safeW,
+    y: (m[1][0] * u + m[1][1] * v + m[1][2]) / safeW
+  };
+}
+
+function screenToGround(x, y) {
+  if (!homographyInv) rebuildGroundHomography();
+  if (!homographyInv) return { u: 0, v: 0 };
+  const m = homographyInv;
+  const w = m[2][0] * x + m[2][1] * y + m[2][2];
+  const safeW = Math.abs(w) < 1e-5 ? (w >= 0 ? 1e-5 : -1e-5) : w;
+  return {
+    u: (m[0][0] * x + m[0][1] * y + m[0][2]) / safeW,
+    v: (m[1][0] * x + m[1][1] * y + m[1][2]) / safeW
+  };
+}
+
+function getHomographyPxPerMeterAt(x, y) {
+  if (!homographyFwd || !homographyInv) rebuildGroundHomography();
+  if (!homographyFwd || !homographyInv) return calibration.refPxPerMeter || 195;
+  const { u, v } = screenToGround(x, y);
+  const p0 = groundToScreen(u, v);
+  const p1 = groundToScreen(u + 0.1, v);
+  const rawPxPerM = Math.hypot(p1.x - p0.x, p1.y - p0.y) * 10;
+  return Math.max(18, Math.min(2400, rawPxPerM * (perspective.verticalMultiplier || 1.0)));
+}
+
+function getPerspectiveFactorAtY(yPx, xPx = null) {
+  const cx = xPx !== null ? xPx : (canvas.width || 1000) / 2;
+  const basePx = getHomographyPxPerMeterAt((canvas.width || 1000) / 2, (canvas.height || 714) * 0.85);
+  const localPx = getHomographyPxPerMeterAt(cx, yPx);
+  return Math.max(0.15, Math.min(3.0, localPx / Math.max(10, basePx)));
+}
+
+function getEffectivePxPerMeterAtXY(xPx, yPx) {
+  if (!perspective.autoScale) return calibration.refPxPerMeter || calibration.pxPerMeter;
+  return getHomographyPxPerMeterAt(xPx, yPx);
 }
 
 function getEffectivePxPerMeterAtFactor(pf) {
   if (!perspective.autoScale) return calibration.refPxPerMeter || calibration.pxPerMeter;
-  const refPf = getPerspectiveFactorAtY(calibration.refY || (canvas.height * 0.85));
-  return (calibration.refPxPerMeter || calibration.pxPerMeter) * (Math.max(0.15, pf) / Math.max(0.15, refPf));
+  const basePx = getHomographyPxPerMeterAt((canvas.width || 1000) / 2, (canvas.height || 714) * 0.85);
+  return basePx * Math.max(0.15, pf);
 }
 
-function heightMToScale(heightM, perspFactor = 1) {
+function heightMToScale(heightM, perspFactor = 1, xPx = null, yPx = null) {
   const ch = canvas.height || 714;
-  const effPxPerM = getEffectivePxPerMeterAtFactor(perspFactor);
+  const effPxPerM = (xPx !== null && yPx !== null)
+    ? getEffectivePxPerMeterAtXY(xPx, yPx)
+    : getEffectivePxPerMeterAtFactor(perspFactor);
   return (heightM * effPxPerM) / ch;
 }
 
@@ -250,15 +377,17 @@ function getLayerWallRatio(layer) {
 function getLayerRealHeightM(layer) {
   const ch = canvas.height || 714;
   const px = ch * layer.scale * getLayerWallRatio(layer);
-  const pf = perspective.autoScale ? (layer.perspFactor || getPerspectiveFactorAtY(layer.y)) : 1;
-  const effPxPerM = getEffectivePxPerMeterAtFactor(pf);
+  const effPxPerM = perspective.autoScale
+    ? (layer.shiftLockedPxPerM || getHomographyPxPerMeterAt(layer.x, layer.y))
+    : (calibration.refPxPerMeter || calibration.pxPerMeter);
   return px / Math.max(5, effPxPerM);
 }
 
 function getLayerRealWidthM(layer) {
   const rect = getLayerRect(layer);
-  const pf = perspective.autoScale ? (layer.perspFactor || getPerspectiveFactorAtY(layer.y)) : 1;
-  const effPxPerM = getEffectivePxPerMeterAtFactor(pf);
+  const effPxPerM = perspective.autoScale
+    ? (layer.shiftLockedPxPerM || getHomographyPxPerMeterAt(layer.x, layer.y))
+    : (calibration.refPxPerMeter || calibration.pxPerMeter);
   return rect.w / Math.max(5, effPxPerM);
 }
 
@@ -717,28 +846,30 @@ function drawPerspectiveGrid(targetCtx, cw, ch) {
   targetCtx.closePath();
   targetCtx.fill();
 
-  const steps = 6;
+  rebuildGroundHomography();
+  const W = Math.max(0.5, perspective.gridWidthM || 4.0);
+  const D = Math.max(0.5, perspective.gridDepthM || 5.0);
+  const stepM = (W <= 3 && D <= 3) ? 0.5 : 1.0;
+
   const drawGridLines = (strokeStyle, lineWidth) => {
     targetCtx.strokeStyle = strokeStyle;
     targetCtx.lineWidth = lineWidth;
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const lx = p.tl.x + (p.bl.x - p.tl.x) * t;
-      const ly = p.tl.y + (p.bl.y - p.tl.y) * t;
-      const rx = p.tr.x + (p.br.x - p.tr.x) * t;
-      const ry = p.tr.y + (p.br.y - p.tr.y) * t;
+    for (let v = 0; v <= D + 0.001; v += stepM) {
+      const vv = Math.min(D, v);
+      const a = groundToScreen(0, vv);
+      const b = groundToScreen(W, vv);
       targetCtx.beginPath();
-      targetCtx.moveTo(lx, ly);
-      targetCtx.lineTo(rx, ry);
+      targetCtx.moveTo(a.x, a.y);
+      targetCtx.lineTo(b.x, b.y);
       targetCtx.stroke();
-
-      const tx = p.tl.x + (p.tr.x - p.tl.x) * t;
-      const ty = p.tl.y + (p.tr.y - p.tl.y) * t;
-      const bx = p.bl.x + (p.br.x - p.bl.x) * t;
-      const by = p.bl.y + (p.br.y - p.bl.y) * t;
+    }
+    for (let u = 0; u <= W + 0.001; u += stepM) {
+      const uu = Math.min(W, u);
+      const a = groundToScreen(uu, 0);
+      const b = groundToScreen(uu, D);
       targetCtx.beginPath();
-      targetCtx.moveTo(tx, ty);
-      targetCtx.lineTo(bx, by);
+      targetCtx.moveTo(a.x, a.y);
+      targetCtx.lineTo(b.x, b.y);
       targetCtx.stroke();
     }
   };
@@ -951,7 +1082,7 @@ canvas.addEventListener("pointerdown", (e) => {
       lastY: hitLayer.y,
       offsetX: x - hitLayer.x,
       offsetY: y - hitLayer.y,
-      prevPersp: perspective.autoScale ? getPerspectiveFactorAtY(hitLayer.y) : 1,
+      prevPxPerM: perspective.autoScale ? (hitLayer.shiftLockedPxPerM || getHomographyPxPerMeterAt(hitLayer.x, hitLayer.y)) : 195,
       shiftLocked: false
     };
     canvas.style.cursor = "grabbing";
@@ -976,6 +1107,7 @@ canvas.addEventListener("pointermove", (e) => {
   if (dragState.type === "persp") {
     perspective.quad[dragState.key].x = Math.max(-0.8, Math.min(1.8, x / canvas.width));
     perspective.quad[dragState.key].y = Math.max(-0.2, Math.min(1.8, y / canvas.height));
+    rebuildGroundHomography();
     draw();
   } else if (dragState.type === "mask") {
     paintMaskAt(dragState.layer, x, y);
@@ -999,21 +1131,30 @@ canvas.addEventListener("pointermove", (e) => {
 
     let scaleRatio = 1;
     if (!e.shiftKey && perspective.autoScale) {
-      const newPersp = getPerspectiveFactorAtY(targetY);
-      if (dragState.prevPersp > 0.05) {
-        scaleRatio = newPersp / dragState.prevPersp;
+      const newPxM = getHomographyPxPerMeterAt(targetX, targetY);
+      const prevPxM = dragState.prevPxPerM || newPxM;
+      if (prevPxM > 5) {
+        scaleRatio = newPxM / prevPxM;
       }
-      dragState.prevPersp = newPersp;
+      dragState.prevPxPerM = newPxM;
+      for (const member of dragState.group) {
+        member.shiftLockedPxPerM = null;
+      }
     } else if (e.shiftKey) {
-      dragState.prevPersp = perspective.autoScale ? getPerspectiveFactorAtY(targetY) : 1;
+      for (const member of dragState.group) {
+        if (!member.shiftLockedPxPerM) {
+          member.shiftLockedPxPerM = getHomographyPxPerMeterAt(member.x, member.y);
+        }
+      }
+      dragState.prevPxPerM = getHomographyPxPerMeterAt(targetX, targetY);
     }
 
     for (const member of dragState.group) {
       member.x += dx;
       member.y += dy;
       if (scaleRatio !== 1) {
-        member.scale = Math.max(0.015, Math.min(2.8, member.scale * scaleRatio));
-        member.perspFactor = getPerspectiveFactorAtY(member.y);
+        member.scale = Math.max(0.015, Math.min(4.0, member.scale * scaleRatio));
+        member.perspFactor = getPerspectiveFactorAtY(member.y, member.x);
         clampScaleToPotIfNeeded(member);
       }
     }
@@ -1954,12 +2095,20 @@ document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
   const pxPerM = distPx / meters;
 
   if (calibration.step === 1) {
-    calibration.frontSample = { y: calY, pxPerM };
+    // Calibrate verticalMultiplier directly against the homography at the clicked ground point!
+    const calX = (p1.x + p2.x) / 2;
+    perspective.verticalMultiplier = 1.0;
+    const gridPxAtPt = getHomographyPxPerMeterAt(calX, calY);
+    if (perspective.autoScale && gridPxAtPt > 10) {
+      perspective.verticalMultiplier = Math.max(0.25, Math.min(4.0, pxPerM / gridPxAtPt));
+    }
     calibration.refPxPerMeter = pxPerM;
     calibration.refY = calY;
     calibration.pxPerMeter = pxPerM;
-    setCalibrationMode(true, 2);
-    showToast("Paso 1 listo. Ahora marcá una medida atrás para la perspectiva.");
+    setCalibrationMode(false);
+    syncUI();
+    draw();
+    showToast(`Altura calibrada sobre la grilla (1 m ≈ ${Math.round(pxPerM)} px ahí)`);
     return;
   }
 
@@ -2014,9 +2163,29 @@ document.getElementById("chkAutoPerspective").addEventListener("change", (e) => 
   perspective.autoScale = e.target.checked;
   showToast(perspective.autoScale ? "Auto-escala por perspectiva activada" : "Auto-escala desactivada");
 });
+
+document.getElementById("ctrlGridWidthM").addEventListener("input", (e) => {
+  const val = parseFloat(e.target.value);
+  if (val > 0.2) {
+    perspective.gridWidthM = val;
+    rebuildGroundHomography();
+    syncUI();
+    draw();
+  }
+});
+document.getElementById("ctrlGridDepthM").addEventListener("input", (e) => {
+  const val = parseFloat(e.target.value);
+  if (val > 0.2) {
+    perspective.gridDepthM = val;
+    rebuildGroundHomography();
+    syncUI();
+    draw();
+  }
+});
+
 document.getElementById("btnStartPerspectiveNow").addEventListener("click", () => {
   document.getElementById("perspectiveGuideModal").classList.add("hidden");
-  setCalibrationMode(true, 1);
+  setPerspectiveVisible(true);
 });
 
 // Container 3D View (Horizontal + Vertical) & Material Listeners
@@ -2647,6 +2816,7 @@ document.getElementById("bgUploadInput").addEventListener("change", (e) => {
     const scale = img.naturalWidth > maxW ? maxW / img.naturalWidth : 1;
     canvas.width = Math.round(img.naturalWidth * scale);
     canvas.height = Math.round(img.naturalHeight * scale);
+    rebuildGroundHomography();
     viewZoom = 1;
     viewPanX = 0;
     viewPanY = 0;
