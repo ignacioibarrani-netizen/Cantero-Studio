@@ -244,11 +244,11 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
   else if (shape === "tierra_cantero") { W = 330; H = 36; D = 150; }
 
   if (customWidthM && customHeightM && customHeightM > 0) {
-    const aspect = Math.max(0.25, Math.min(12.0, customWidthM / customHeightM));
-    const depthAspect = customDepthM && customDepthM > 0 ? Math.max(0.2, Math.min(6.0, customDepthM / customHeightM)) : 0.85;
+    const aspect = Math.max(0.05, customWidthM / customHeightM);
+    const depthAspect = customDepthM && customDepthM > 0 ? Math.max(0.05, customDepthM / customHeightM) : 0.85;
     H = 140;
-    W = Math.round(H * aspect);
-    D = Math.round(H * depthAspect);
+    W = Math.max(12, Math.round(H * aspect));
+    D = Math.max(12, Math.round(H * depthAspect));
   }
 
   // Compute tight bounding box first so canvas aspect matches exact 3D projection without clipping or padding distortion
@@ -265,7 +265,7 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
     const rz0 = x * sinY + z * cosY;
     const ry1 = y * cosP - rz0 * sinP;
     const rz1 = y * sinP + rz0 * cosP;
-    const p = 1 / Math.max(0.35, 1 - rz1 * perspStrength);
+    const p = 1 / Math.max(0.35, 1 - rz1 * (perspStrength * (240 / Math.max(240, Math.max(W, D)))));
     return [rx * p, -ry1 * p];
   });
   let tMinX = Infinity, tMaxX = -Infinity, tMinY = Infinity, tMaxY = -Infinity;
@@ -286,7 +286,8 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
   canvas.height = ch;
   const ctx = canvas.getContext("2d");
 
-  const pts = projectBox(W, H, D, yawDeg, pitchDeg, perspStrength, cw, ch);
+  const normPersp = perspStrength * (240 / Math.max(240, Math.max(W, D)));
+  const pts = projectBox(W, H, D, yawDeg, pitchDeg, normPersp, cw, ch);
   const colorSpec = getColorSpec(materialId, colorId);
 
   const faces = [
@@ -456,8 +457,9 @@ function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty,
   return dataUrl;
 }
 
-function renderOrganicSoilBed(mulch = false, pitchDeg = 22) {
-  const cw = 520;
+function renderOrganicSoilBed(mulch = false, pitchDeg = 22, customWidthM = null, customDepthM = null) {
+  const ratio = (customWidthM && customDepthM && customDepthM > 0) ? Math.max(0.25, Math.min(6, customWidthM / customDepthM)) : 2.4;
+  const cw = Math.max(260, Math.min(900, Math.round(220 * ratio)));
   const ch = 220;
   const canvas = document.createElement("canvas");
   canvas.width = cw;
@@ -471,7 +473,7 @@ function renderOrganicSoilBed(mulch = false, pitchDeg = 22) {
     const a = (i / steps) * Math.PI * 2;
     const wobble = 0.9 + Math.sin(i * 2.3) * 0.08;
     pts.push([
-      cw / 2 + Math.cos(a) * 215 * wobble,
+      cw / 2 + Math.cos(a) * (cw * 0.42) * wobble,
       ch / 2 + 8 + Math.sin(a) * 64 * pitchScale * wobble
     ]);
   }
@@ -514,7 +516,7 @@ export function getContainerRenderSrc({
 
   let dataUrl;
   if (shape === "tierra_organica") {
-    dataUrl = renderOrganicSoilBed(mulch, normPitch);
+    dataUrl = renderOrganicSoilBed(mulch, normPitch, customWidthM, customDepthM);
   } else if (shape === "maceta_cilindro") {
     dataUrl = renderCylinderContainer(material, colorId, normYaw, normPitch, isEmpty, customWidthM, customHeightM);
   } else {

@@ -763,23 +763,28 @@ function drawPerspectiveGrid(targetCtx, cw, ch) {
 
   for (const key of ["tl", "tr", "br", "bl"]) {
     const pt = p[key];
-    targetCtx.fillStyle = "#7c3aed";
+    const offscreen = pt.x < 12 || pt.x > cw - 12 || pt.y < 12 || pt.y > ch - 12;
+    const hx = Math.max(14, Math.min(cw - 14, pt.x));
+    const hy = Math.max(14, Math.min(ch - 14, pt.y));
+
+    targetCtx.fillStyle = offscreen ? "#ec4899" : "#7c3aed";
     targetCtx.strokeStyle = "#ffffff";
     targetCtx.lineWidth = 3;
     targetCtx.beginPath();
-    targetCtx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+    targetCtx.arc(hx, hy, r, 0, Math.PI * 2);
     targetCtx.fill();
     targetCtx.stroke();
 
-    const tw = targetCtx.measureText(pt.lbl).width + 10;
-    const lx = Math.min(cw - tw - 4, Math.max(4, pt.x - tw / 2));
-    const ly = key.startsWith("t") ? Math.max(4, pt.y - r - fSize - 10) : Math.min(ch - fSize - 8, pt.y + r + 4);
-    targetCtx.fillStyle = "rgba(9, 9, 11, 0.85)";
+    const lblText = offscreen ? `${pt.lbl} (fuera)` : pt.lbl;
+    const tw = targetCtx.measureText(lblText).width + 10;
+    const lx = Math.min(cw - tw - 4, Math.max(4, hx - tw / 2));
+    const ly = key.startsWith("t") ? Math.max(4, hy - r - fSize - 10) : Math.min(ch - fSize - 10, hy - r - fSize - 10);
+    targetCtx.fillStyle = "rgba(9, 9, 11, 0.88)";
     targetCtx.beginPath();
     targetCtx.roundRect(lx, ly, tw, fSize + 8, 4);
     targetCtx.fill();
-    targetCtx.fillStyle = "#ddd6fe";
-    targetCtx.fillText(pt.lbl, lx + 5, ly + fSize + 1);
+    targetCtx.fillStyle = offscreen ? "#fbcfe8" : "#ddd6fe";
+    targetCtx.fillText(lblText, lx + 5, ly + fSize + 1);
   }
   targetCtx.restore();
 }
@@ -869,8 +874,10 @@ canvas.addEventListener("pointerdown", (e) => {
   if (perspective.visible) {
     const tol = Math.max(20, canvas.width / 50);
     for (const key of ["tl", "tr", "br", "bl"]) {
-      const px = perspective.quad[key].x * canvas.width;
-      const py = perspective.quad[key].y * canvas.height;
+      const rawX = perspective.quad[key].x * canvas.width;
+      const rawY = perspective.quad[key].y * canvas.height;
+      const px = Math.max(14, Math.min(canvas.width - 14, rawX));
+      const py = Math.max(14, Math.min(canvas.height - 14, rawY));
       if (Math.hypot(x - px, y - py) <= tol) {
         pushUndoSnapshot();
         dragState = { type: "persp", key };
@@ -965,8 +972,8 @@ canvas.addEventListener("pointermove", (e) => {
   const { x, y } = getCanvasCoords(e);
 
   if (dragState.type === "persp") {
-    perspective.quad[dragState.key].x = Math.max(0.02, Math.min(0.98, x / canvas.width));
-    perspective.quad[dragState.key].y = Math.max(0.05, Math.min(0.98, y / canvas.height));
+    perspective.quad[dragState.key].x = Math.max(-0.8, Math.min(1.8, x / canvas.width));
+    perspective.quad[dragState.key].y = Math.max(-0.2, Math.min(1.8, y / canvas.height));
     draw();
   } else if (dragState.type === "mask") {
     paintMaskAt(dragState.layer, x, y);
@@ -1684,9 +1691,12 @@ function syncBotanicalInspector(sel) {
       potWrap.classList.remove("hidden");
       soilNote.classList.add("hidden");
       parentWrap.classList.remove("hidden");
-      document.getElementById("ctrlCustomWidthM").value = wM.toFixed(2);
-      document.getElementById("ctrlCustomHeightM").value = hM.toFixed(2);
-      document.getElementById("ctrlCustomDepthM").value = (sel.customDepthM || Math.max(0.25, hM * 0.9)).toFixed(2);
+      const inW = document.getElementById("ctrlCustomWidthM");
+      const inH = document.getElementById("ctrlCustomHeightM");
+      const inD = document.getElementById("ctrlCustomDepthM");
+      if (document.activeElement !== inW) inW.value = (sel.customWidthM || wM).toFixed(2);
+      if (document.activeElement !== inH) inH.value = (sel.customHeightM || hM).toFixed(2);
+      if (document.activeElement !== inD) inD.value = (sel.customDepthM || Math.max(0.25, hM * 0.9)).toFixed(2);
       const liters = sel.liters ?? 45;
       document.getElementById("ctrlPotLiters").value = liters;
       document.getElementById("valPotLiters").textContent = `${liters} L`;
@@ -1920,6 +1930,19 @@ document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
 });
 
 document.getElementById("btnPerspective").addEventListener("click", () => setPerspectiveVisible(!perspective.visible));
+document.getElementById("btnExtendPerspectiveFront").addEventListener("click", () => {
+  pushUndoSnapshot();
+  const q = perspective.quad;
+  const k = 0.25;
+  q.bl.x = Math.max(-0.8, Math.min(1.8, q.bl.x + (q.bl.x - q.tl.x) * k));
+  q.bl.y = Math.max(-0.2, Math.min(1.8, q.bl.y + (q.bl.y - q.tl.y) * k));
+  q.br.x = Math.max(-0.8, Math.min(1.8, q.br.x + (q.br.x - q.tr.x) * k));
+  q.br.y = Math.max(-0.2, Math.min(1.8, q.br.y + (q.br.y - q.tr.y) * k));
+  refreshAllContainersPerspective();
+  draw();
+  showToast("Malla proyectada hacia adelante (+25%)");
+});
+
 document.getElementById("btnExitPerspective").addEventListener("click", () => setPerspectiveVisible(false));
 document.getElementById("chkAutoPerspective").addEventListener("change", (e) => {
   perspective.autoScale = e.target.checked;
@@ -1971,25 +1994,33 @@ document.getElementById("ctrlContainerPitch").addEventListener("input", async (e
 async function applyCustomContainerDims() {
   const sel = getSelectedLayer();
   if (!sel || sel.kind !== "container") return;
-  const wM = Math.max(0.2, Math.min(12.0, Number(document.getElementById("ctrlCustomWidthM").value) || 1.2));
-  const hM = Math.max(0.15, Math.min(2.5, Number(document.getElementById("ctrlCustomHeightM").value) || 0.45));
-  const dM = Math.max(0.15, Math.min(4.0, Number(document.getElementById("ctrlCustomDepthM").value) || 0.45));
-  sel.customWidthM = wM;
-  sel.customHeightM = hM;
-  sel.customDepthM = dM;
+  const rawW = parseFloat(document.getElementById("ctrlCustomWidthM").value);
+  const rawH = parseFloat(document.getElementById("ctrlCustomHeightM").value);
+  const rawD = parseFloat(document.getElementById("ctrlCustomDepthM").value);
+  if (!rawW || rawW <= 0 || !rawH || rawH <= 0 || !rawD || rawD <= 0) return;
+
+  sel.customWidthM = rawW;
+  sel.customHeightM = rawH;
+  sel.customDepthM = rawD;
   await refreshContainerLayerAppearance(sel);
   const pf = perspective.autoScale ? (sel.perspFactor || getPerspectiveFactorAtY(sel.y)) : 1;
   const wallRatio = getLayerWallRatio(sel);
-  sel.scale = Math.max(0.015, heightMToScale(hM / wallRatio, pf));
+  sel.scale = Math.max(0.015, heightMToScale(rawH / wallRatio, pf));
   syncInspectorValues();
   draw();
 }
+let customDimsTimer = null;
 ["ctrlCustomWidthM", "ctrlCustomHeightM", "ctrlCustomDepthM"].forEach(id => {
   const el = document.getElementById(id);
+  el.addEventListener("input", () => {
+    clearTimeout(customDimsTimer);
+    customDimsTimer = setTimeout(applyCustomContainerDims, 160);
+  });
   el.addEventListener("change", applyCustomContainerDims);
   el.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      clearTimeout(customDimsTimer);
       applyCustomContainerDims();
       el.blur();
     }
