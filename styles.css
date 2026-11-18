@@ -40,3 +40,24 @@ input[type="range"] {
   border-color: rgba(16, 185, 129, 0.7) !important;
   color: #a7f3d0 !important;
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #18181b !important;
+  }
+  #specSheetModal {
+    position: static !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  #specSheetModal > div {
+    max-height: none !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
