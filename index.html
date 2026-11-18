@@ -10,10 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col select-none">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen lg:h-screen lg:overflow-hidden flex flex-col select-none">
 
   <!-- Top Toolbar -->
-  <header class="bg-zinc-900 border-b border-zinc-800 px-3 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 z-20 no-print">
+  <header class="bg-zinc-900 border-b border-zinc-800 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 z-20 shrink-0 no-print">
     <div class="flex items-center gap-2.5">
       <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -70,11 +70,11 @@
   </header>
 
   <!-- Main Workspace -->
-  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden no-print">
+  <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden no-print">
 
-    <!-- Left Panel: Plant & Container Catalog -->
-    <aside id="catalogAside" class="w-full lg:w-72 bg-zinc-900/90 border-b lg:border-b-0 lg:border-r border-zinc-800 flex flex-col shrink-0 max-h-[38vh] lg:max-h-none">
-      <div class="p-3 border-b border-zinc-800 space-y-2">
+    <!-- Left Panel: Plant & Container Catalog (independent scroll) -->
+    <aside id="catalogAside" class="w-full lg:w-72 lg:h-full bg-zinc-900/90 border-b lg:border-b-0 lg:border-r border-zinc-800 flex flex-col shrink-0 max-h-[38vh] lg:max-h-full overflow-hidden">
+      <div class="p-3 border-b border-zinc-800 space-y-2 shrink-0">
         <div class="flex items-center justify-between">
           <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Catálogo Botánico</h2>
           <div class="flex items-center gap-2">
@@ -82,10 +82,12 @@
             <button id="btnCatalogAdd" type="button" class="px-1.5 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[10px] font-semibold transition">+ Cargar</button>
           </div>
         </div>
-        <input id="catalogSearch" type="search" placeholder="Buscar especie, maceta o tierra..." class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/60" />
-        <div class="grid grid-cols-6 gap-0.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+        <input id="catalogSearch" type="search" placeholder="Buscar especie, árbol, trepadora, maceta..." class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/60" />
+        <div class="grid grid-cols-4 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
           <button type="button" data-filter="all" class="filter-btn px-1 py-1 rounded text-[10px] font-medium bg-emerald-600 text-white">Todo</button>
           <button type="button" data-filter="cerco" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Cerco</button>
+          <button type="button" data-filter="arboles" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Árboles</button>
+          <button type="button" data-filter="trepadoras" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Trepad.</button>
           <button type="button" data-filter="primera" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">1ª Fila</button>
           <button type="button" data-filter="macetas" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Macetas</button>
           <button type="button" data-filter="tierra" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Tierra</button>
@@ -93,22 +95,22 @@
         </div>
       </div>
 
-      <div id="catalogGrid" class="p-2.5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 overflow-y-auto flex-1">
+      <div id="catalogGrid" class="p-2.5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 overflow-y-auto overscroll-contain flex-1 min-h-0">
         <!-- Populated by JS -->
       </div>
     </aside>
 
-    <!-- Center Canvas Stage -->
-    <main class="flex-1 bg-zinc-950 relative flex flex-col items-center justify-center p-3 sm:p-5 overflow-hidden min-h-[340px]">
+    <!-- Center Canvas Stage (fixed centered viewer, scroll = zoom) -->
+    <main class="flex-1 h-full bg-zinc-950 relative flex flex-col items-center justify-center p-2 sm:p-3 overflow-hidden min-h-[340px]">
 
       <!-- Mode Banners -->
-      <div id="maskBanner" class="hidden mb-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 z-10">
+      <div id="maskBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 z-20 shrink-0">
         <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
         <span>Modo Máscara activo: pintá sobre la planta para ocultarla detrás de una maceta o baranda</span>
         <button id="btnExitMask" type="button" class="ml-1 px-2 py-0.5 rounded bg-amber-500 text-zinc-950 font-semibold text-[11px] hover:bg-amber-400">Listo</button>
       </div>
 
-      <div id="calibrateBanner" class="hidden mb-2 px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-200 text-xs flex flex-wrap items-center gap-2 z-10">
+      <div id="calibrateBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-200 text-xs flex flex-wrap items-center gap-2 z-20 shrink-0">
         <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
         <span id="calibratePromptText">Hacé clic en 2 puntos de un objeto cuya medida real conozcas (ej. puerta, pared o maceta)</span>
         <div id="calibrateInputGroup" class="hidden items-center gap-1.5">
@@ -119,9 +121,9 @@
         <button id="btnCancelCalibrate" type="button" class="ml-1 px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 text-[11px] hover:bg-zinc-700">Cancelar</button>
       </div>
 
-      <div id="perspectiveBanner" class="hidden mb-2 px-3 py-1.5 rounded-full bg-violet-500/15 border border-violet-500/40 text-violet-200 text-xs flex flex-wrap items-center gap-2 z-10">
+      <div id="perspectiveBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-violet-500/15 border border-violet-500/40 text-violet-200 text-xs flex flex-wrap items-center gap-2 z-20 shrink-0">
         <span class="w-2 h-2 rounded-full bg-violet-400"></span>
-        <span>Arrastrá las 4 esquinas de la malla sobre el suelo o cantero</span>
+        <span>Arrastrá las 4 esquinas violetas sobre el suelo o cantero</span>
         <label class="inline-flex items-center gap-1 cursor-pointer ml-1">
           <input id="chkAutoPerspective" type="checkbox" checked class="accent-violet-500" />
           <span>Auto-escalar plantas al mover</span>
@@ -129,24 +131,34 @@
         <button id="btnExitPerspective" type="button" class="ml-1 px-2 py-0.5 rounded bg-violet-500 text-zinc-950 font-semibold text-[11px] hover:bg-violet-400">Ocultar malla</button>
       </div>
 
-      <div id="stageWrapper" class="relative w-full h-full flex items-center justify-center">
-        <canvas id="mainCanvas" class="max-w-full max-h-[65vh] lg:max-h-[82vh] rounded-lg shadow-2xl border border-zinc-800 cursor-grab touch-none"></canvas>
+      <div id="stageWrapper" class="relative w-full flex-1 min-h-0 flex items-center justify-center overflow-hidden rounded-lg bg-zinc-950/60 border border-zinc-900">
+        <canvas id="mainCanvas" class="max-w-full max-h-full rounded-lg shadow-2xl border border-zinc-800 cursor-grab touch-none origin-center transition-transform duration-75"></canvas>
+
+        <!-- Zoom Pill -->
+        <div class="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-700 text-[11px] text-zinc-200 shadow-lg z-10">
+          <button id="btnZoomOut" type="button" class="px-1 hover:text-emerald-400 font-bold" title="Alejar">−</button>
+          <span id="valViewZoom" class="min-w-[38px] text-center font-medium">100%</span>
+          <button id="btnZoomIn" type="button" class="px-1 hover:text-emerald-400 font-bold" title="Acercar">+</button>
+          <button id="btnZoomReset" type="button" class="ml-1 px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-300">Reset</button>
+        </div>
       </div>
 
       <!-- Quick Hint & Scale Bar -->
-      <div class="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+      <div class="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 shrink-0">
         <span id="scaleStatusText" class="text-sky-400/90 font-medium">Escala: 1 m ≈ 195 px</span>
         <span>•</span>
-        <span>Arrastrar + <kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Shift</kbd> = solo subir/bajar (sin profundidad)</span>
+        <span>Rueda = Zoom viewer</span>
         <span>•</span>
-        <span>Rueda = tamaño</span>
+        <span>Arrastrar + <kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Shift</kbd> = solo subir/bajar</span>
+        <span>•</span>
+        <span><kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Alt</kbd> + arrastrar = separar de maceta</span>
         <span>•</span>
         <span>Supr = borrar</span>
       </div>
     </main>
 
-    <!-- Right Panel: Inspector & Layers -->
-    <aside class="w-full lg:w-80 bg-zinc-900/90 border-t lg:border-t-0 lg:border-l border-zinc-800 flex flex-col shrink-0 overflow-y-auto max-h-[45vh] lg:max-h-none">
+    <!-- Right Panel: Inspector & Layers (independent scroll) -->
+    <aside class="w-full lg:w-80 lg:h-full bg-zinc-900/90 border-t lg:border-t-0 lg:border-l border-zinc-800 flex flex-col shrink-0 overflow-y-auto overscroll-contain max-h-[45vh] lg:max-h-full">
 
       <!-- Selected Item Inspector -->
       <div class="p-3.5 border-b border-zinc-800">
@@ -188,36 +200,64 @@
             </div>
 
             <div id="containerDetails" class="hidden space-y-2.5">
-              <div id="potLitersWrap">
-                <div class="flex justify-between text-[11px] mb-1">
-                  <span class="text-zinc-400">Volumen de sustrato</span>
-                  <span id="valPotLiters" class="text-zinc-200 font-medium">45 L</span>
+              <div id="potLitersWrap" class="space-y-1.5">
+                <div>
+                  <div class="flex justify-between text-[11px] mb-1">
+                    <span class="text-zinc-400">Volumen de sustrato</span>
+                    <span id="valPotLiters" class="text-zinc-200 font-medium">45 L</span>
+                  </div>
+                  <input id="ctrlPotLiters" type="range" min="0" max="400" step="5" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
                 </div>
-                <input id="ctrlPotLiters" type="range" min="5" max="400" step="5" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+                <div id="recommendedSubstrateBox" class="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] text-zinc-300 leading-relaxed">
+                  <!-- Populated by JS -->
+                </div>
               </div>
 
               <div id="groundSoilNote" class="hidden text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded px-2 py-1">
                 Plantación directa al piso (sin límite de volumen)
               </div>
 
-              <!-- 3D View / Rotation Controls -->
-              <div id="containerViewSection" class="space-y-1.5 pt-1 border-t border-zinc-800/80">
-                <div class="flex justify-between items-center text-[11px]">
-                  <span class="text-zinc-400 font-medium">Vista / Rotación 3D</span>
-                  <span id="valContainerAngle" class="text-zinc-200 font-medium">0°</span>
+              <div id="parentContainerWrap">
+                <label class="block text-[11px] text-zinc-400 mb-1">Ubicado dentro de cantero / piso</label>
+                <select id="ctrlParentContainerSelect" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200">
+                  <option value="">Suelto en el piso</option>
+                </select>
+              </div>
+
+              <!-- 3D View / Rotation Controls (Horizontal + Vertical) -->
+              <div id="containerViewSection" class="space-y-2 pt-1.5 border-t border-zinc-800/80">
+                <div>
+                  <div class="flex justify-between items-center text-[11px] mb-1">
+                    <span class="text-zinc-400 font-medium">Rotación Horizontal</span>
+                    <span id="valContainerAngle" class="text-zinc-200 font-medium">0°</span>
+                  </div>
+                  <div class="grid grid-cols-5 gap-1 mb-1.5" id="viewPresetBtns">
+                    <button type="button" data-angle="0" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Frente</button>
+                    <button type="button" data-angle="40" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4</button>
+                    <button type="button" data-angle="90" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Perfil</button>
+                    <button type="button" data-angle="180" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Espalda</button>
+                    <button type="button" data-angle="320" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4 Izq</button>
+                  </div>
+                  <input id="ctrlContainerAngle" type="range" min="0" max="355" step="5" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
                 </div>
-                <div class="grid grid-cols-5 gap-1" id="viewPresetBtns">
-                  <button type="button" data-angle="0" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Frente</button>
-                  <button type="button" data-angle="40" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4</button>
-                  <button type="button" data-angle="90" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Perfil</button>
-                  <button type="button" data-angle="180" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Espalda</button>
-                  <button type="button" data-angle="320" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4 Izq</button>
+
+                <div>
+                  <div class="flex justify-between items-center text-[11px] mb-1">
+                    <span class="text-zinc-400 font-medium">Rotación Vertical (altura cámara)</span>
+                    <span id="valContainerPitch" class="text-zinc-200 font-medium">22°</span>
+                  </div>
+                  <div class="grid grid-cols-4 gap-1 mb-1.5">
+                    <button type="button" data-pitch="8" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Nivel</button>
+                    <button type="button" data-pitch="22" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Normal</button>
+                    <button type="button" data-pitch="42" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Picado</button>
+                    <button type="button" data-pitch="62" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Cenital</button>
+                  </div>
+                  <input id="ctrlContainerPitch" type="range" min="6" max="66" step="2" value="22" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
                 </div>
-                <input id="ctrlContainerAngle" type="range" min="0" max="355" step="5" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
 
               <!-- Material & Color Controls -->
-              <div id="containerMaterialSection" class="space-y-1.5 pt-1 border-t border-zinc-800/80">
+              <div id="containerMaterialSection" class="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
                 <span class="block text-[11px] text-zinc-400 font-medium">Materialidad y Color</span>
                 <select id="ctrlContainerMaterial" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"></select>
                 <div id="containerColorSwatches" class="flex flex-wrap gap-1.5 pt-0.5"></div>
@@ -322,11 +362,53 @@
           <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Capas en Escena</h2>
           <span id="layerCount" class="text-[11px] text-zinc-500">0</span>
         </div>
-        <div id="layersList" class="space-y-1.5">
+        <div id="layersList" class="space-y-1">
           <!-- Populated by JS -->
         </div>
       </div>
     </aside>
+  </div>
+
+  <!-- Mandatory Perspective Setup Guide Modal (triggered on photo upload) -->
+  <div id="perspectiveGuideModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-zinc-900 border border-violet-500/50 rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-lg bg-violet-500/20 border border-violet-500/40 flex items-center justify-center text-violet-300 shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20L8 4h8l4 16H4zm2.5-8h11M12 4v16"/></svg>
+        </div>
+        <div>
+          <h3 class="text-base font-semibold text-zinc-100">Paso clave: ajustá la Malla de Perspectiva</h3>
+          <p class="text-xs text-zinc-400 mt-0.5">Para que las plantas, macetas y canteros se achiquen correctamente hacia el fondo y mantengan su escala real:</p>
+        </div>
+      </div>
+
+      <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex flex-col sm:flex-row gap-3 items-center">
+        <svg viewBox="0 0 220 130" class="w-44 h-28 shrink-0 rounded border border-zinc-800 bg-zinc-900">
+          <line x1="0" y1="45" x2="220" y2="45" stroke="#3f3f46" stroke-dasharray="3,3" stroke-width="1" />
+          <polygon points="58,52 162,52 204,118 16,118" fill="rgba(139,92,246,0.18)" stroke="#a78bfa" stroke-width="2.5" />
+          <line x1="84" y1="52" x2="63" y2="118" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
+          <line x1="110" y1="52" x2="110" y2="118" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
+          <line x1="136" y1="52" x2="157" y2="118" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
+          <line x1="44" y1="74" x2="176" y2="74" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
+          <line x1="30" y1="96" x2="190" y2="96" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
+          <circle cx="58" cy="52" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
+          <circle cx="162" cy="52" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
+          <circle cx="204" cy="118" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
+          <circle cx="16" cy="118" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
+        </svg>
+        <ol class="text-xs text-zinc-300 space-y-2 list-decimal list-inside">
+          <li>Arrastrá los <strong>2 puntos superiores</strong> (Fondo) al borde más lejano del piso o cantero.</li>
+          <li>Arrastrá los <strong>2 puntos inferiores</strong> (Frente) a la zona más cercana a la cámara, siguiendo las líneas de fuga del piso.</li>
+          <li>Luego usá <strong>Calibrar escala</strong> marcando una medida conocida (ej. puerta de 2 m o maceta) en el frente.</li>
+        </ol>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button id="btnStartPerspectiveNow" type="button" class="w-full sm:w-auto px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition">
+          Entendido, ajustar malla ahora
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Add New Plant Modal -->
@@ -365,6 +447,8 @@
               <label class="block text-[11px] text-zinc-400 mb-1">Categoría</label>
               <select id="npCategory" class="w-full px-2 py-1.5 rounded bg-zinc-950 border border-zinc-700 text-zinc-100">
                 <option value="cerco">Cerco</option>
+                <option value="arboles">Árbol pequeño</option>
+                <option value="trepadoras">Trepadora / Enredadera</option>
                 <option value="primera" selected>1ª Fila / Bordura</option>
                 <option value="custom">Propia (Mías)</option>
               </select>
@@ -428,7 +512,7 @@
         </button>
       </div>
 
-      <div id="potPickerGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 overflow-y-auto pr-1 flex-1">
+      <div id="potPickerGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 overflow-y-auto overscroll-contain pr-1 flex-1">
         <!-- Populated by JS -->
       </div>
     </div>
@@ -440,7 +524,7 @@
       <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-900 no-print">
         <div>
           <h3 class="text-sm font-semibold text-zinc-100">Ficha Técnica del Proyecto</h3>
-          <p class="text-[11px] text-zinc-400">Desglose de plantas, contenedores y especificaciones listas para vivero o cliente.</p>
+          <p class="text-[11px] text-zinc-400">Desglose de plantas, contenedores y sustratos recomendados.</p>
         </div>
         <div class="flex flex-wrap items-center gap-1.5">
           <button id="btnDownloadSpecCsv" type="button" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-200">CSV</button>
@@ -449,7 +533,7 @@
           <button id="btnCloseSpec" type="button" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300">Cerrar</button>
         </div>
       </div>
-      <div id="specSheetBody" class="p-5 overflow-y-auto bg-white text-zinc-900 flex-1">
+      <div id="specSheetBody" class="p-5 overflow-y-auto overscroll-contain bg-white text-zinc-900 flex-1">
         <!-- Populated dynamically -->
       </div>
     </div>

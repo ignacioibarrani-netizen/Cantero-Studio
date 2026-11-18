@@ -2,12 +2,165 @@ export const SAMPLE_BG_SRC = "assets/bg/demo_patio.jpg";
 
 /**
  * Catálogo botánico y de contenedores con parámetros reales de paisajismo.
- * - minHeightM / maxHeightM: rango biológico viable en jardín o terraza.
- * - idealMinM / idealMaxM: rango ornamental habitual.
- * - minPotLiters / idealPotLiters: volumen mínimo y óptimo de sustrato en maceta.
- * - sun / water / notes: especificaciones para la Ficha Técnica.
+ * Categorías: "cerco", "arboles", "trepadoras", "primera", "macetas", "tierra", "custom"
  */
 export const BUILTIN_ITEMS = [
+  // === ÁRBOLES PEQUEÑOS ===
+  {
+    id: "limonero",
+    kind: "plant",
+    name: "Limonero 4 Estaciones",
+    sci: "Citrus × limon",
+    category: "arboles",
+    heightLabel: "1.8 – 3.5 m",
+    defaultHeightM: 2.2,
+    minHeightM: 1.0,
+    idealMinM: 1.8,
+    idealMaxM: 3.5,
+    maxHeightM: 5.0,
+    minPotLiters: 50,
+    idealPotLiters: 140,
+    sun: "Sol pleno",
+    water: "Moderado a regular",
+    notes: "Cítrico frutal ideal para patio soleado o macetón grande; proteger de heladas fuertes.",
+    src: "assets/plants/limonero.png"
+  },
+  {
+    id: "arce_japones",
+    kind: "plant",
+    name: "Arce Japonés",
+    sci: "Acer palmatum",
+    category: "arboles",
+    heightLabel: "1.8 – 3.8 m",
+    defaultHeightM: 2.3,
+    minHeightM: 0.9,
+    idealMinM: 1.8,
+    idealMaxM: 3.8,
+    maxHeightM: 5.5,
+    minPotLiters: 45,
+    idealPotLiters: 130,
+    sun: "Media sombra (sin sol fuerte de tarde)",
+    water: "Moderado",
+    notes: "Follaje rojo carmesí muy ornamental; ideal en patios protegidos del viento cálido.",
+    src: "assets/plants/arce_japones.png"
+  },
+  {
+    id: "crespon",
+    kind: "plant",
+    name: "Crespón (Árbol de Júpiter)",
+    sci: "Lagerstroemia indica",
+    category: "arboles",
+    heightLabel: "2.2 – 4.5 m",
+    defaultHeightM: 2.6,
+    minHeightM: 1.2,
+    idealMinM: 2.2,
+    idealMaxM: 4.5,
+    maxHeightM: 6.5,
+    minPotLiters: 55,
+    idealPotLiters: 150,
+    sun: "Sol pleno",
+    water: "Bajo a moderado",
+    notes: "Floración rosa/fucsia espectacular en verano; corteza lisa y follaje otoñal.",
+    src: "assets/plants/crespon.png"
+  },
+  {
+    id: "magnolia",
+    kind: "plant",
+    name: "Magnolia Tulipán",
+    sci: "Magnolia × soulangeana",
+    category: "arboles",
+    heightLabel: "2.2 – 4.5 m",
+    defaultHeightM: 2.5,
+    minHeightM: 1.2,
+    idealMinM: 2.2,
+    idealMaxM: 4.5,
+    maxHeightM: 6.0,
+    minPotLiters: 60,
+    idealPotLiters: 160,
+    sun: "Sol suave / Media sombra",
+    water: "Moderado",
+    notes: "Grandes flores rosadas a fin de invierno; prefiere suelo fértil levemente ácido.",
+    src: "assets/plants/magnolia.png"
+  },
+
+  // === TREPADORAS Y ENREDADERAS ===
+  {
+    id: "jazmin_leche",
+    kind: "plant",
+    name: "Jazmín de Leche (Estrella)",
+    sci: "Trachelospermum jasminoides",
+    category: "trepadoras",
+    heightLabel: "1.8 – 4.0 m",
+    defaultHeightM: 2.2,
+    minHeightM: 0.7,
+    idealMinM: 1.5,
+    idealMaxM: 4.0,
+    maxHeightM: 6.0,
+    minPotLiters: 25,
+    idealPotLiters: 70,
+    sun: "Sol / Media sombra",
+    water: "Moderado",
+    notes: "Trepadora perenne muy perfumada en primavera; requiere guía o alambre en pared.",
+    src: "assets/plants/jazmin_leche.png"
+  },
+  {
+    id: "santa_rita",
+    kind: "plant",
+    name: "Santa Rita (Bougainvillea)",
+    sci: "Bougainvillea spectabilis",
+    category: "trepadoras",
+    heightLabel: "2.0 – 4.5 m",
+    defaultHeightM: 2.4,
+    minHeightM: 0.8,
+    idealMinM: 1.8,
+    idealMaxM: 4.5,
+    maxHeightM: 7.0,
+    minPotLiters: 30,
+    idealPotLiters: 85,
+    sun: "Sol pleno",
+    water: "Bajo (florece más con riego medido)",
+    notes: "Explosión de color fucsia/magenta; ideal en pérgolas y muros soleados.",
+    src: "assets/plants/santa_rita.png"
+  },
+  {
+    id: "hiedra",
+    kind: "plant",
+    name: "Hiedra Inglesa",
+    sci: "Hedera helix",
+    category: "trepadoras",
+    heightLabel: "1.2 – 3.5 m",
+    defaultHeightM: 1.8,
+    minHeightM: 0.4,
+    idealMinM: 1.0,
+    idealMaxM: 3.5,
+    maxHeightM: 6.0,
+    minPotLiters: 15,
+    idealPotLiters: 45,
+    sun: "Sombra / Media sombra",
+    water: "Moderado",
+    notes: "Perenne, cubre muros sombreados o cae en cascada desde macetas altas.",
+    src: "assets/plants/hiedra.png"
+  },
+  {
+    id: "enamorada_muro",
+    kind: "plant",
+    name: "Enamorada del Muro",
+    sci: "Parthenocissus tricuspidata",
+    category: "trepadoras",
+    heightLabel: "2.0 – 5.0 m",
+    defaultHeightM: 2.5,
+    minHeightM: 0.8,
+    idealMinM: 1.8,
+    idealMaxM: 5.0,
+    maxHeightM: 8.0,
+    minPotLiters: 25,
+    idealPotLiters: 75,
+    sun: "Sol / Media sombra",
+    water: "Bajo a moderado",
+    notes: "Se adhiere sola a la pared; follaje verde en verano y rojo fuego en otoño.",
+    src: "assets/plants/enamorada_muro.png"
+  },
+
   // === CERCO / ESTRUCTURALES ===
   {
     id: "fotinia",
@@ -200,7 +353,83 @@ export const BUILTIN_ITEMS = [
     src: "assets/plants/cica.png"
   },
 
-  // === 1ª FILA / BORDURAS Y GRAMÍNEAS ===
+  // === 1ª FILA / BORDURAS, GRAMÍNEAS Y HERBÁCEAS ===
+  {
+    id: "hortensia",
+    kind: "plant",
+    name: "Hortensia",
+    sci: "Hydrangea macrophylla",
+    category: "primera",
+    heightLabel: "0.7 – 1.4 m",
+    defaultHeightM: 0.95,
+    minHeightM: 0.4,
+    idealMinM: 0.7,
+    idealMaxM: 1.4,
+    maxHeightM: 1.8,
+    minPotLiters: 22,
+    idealPotLiters: 55,
+    sun: "Media sombra / Sol de mañana",
+    water: "Abundante en verano",
+    notes: "Floración globosa azul/lila en suelo ácido; ideal bajo aleros o árboles.",
+    src: "assets/plants/hortensia.png"
+  },
+  {
+    id: "agave",
+    kind: "plant",
+    name: "Agave Atenuado",
+    sci: "Agave attenuata",
+    category: "primera",
+    heightLabel: "0.6 – 1.2 m",
+    defaultHeightM: 0.85,
+    minHeightM: 0.35,
+    idealMinM: 0.6,
+    idealMaxM: 1.2,
+    maxHeightM: 1.6,
+    minPotLiters: 20,
+    idealPotLiters: 50,
+    sun: "Sol pleno / Media sombra",
+    water: "Muy bajo",
+    notes: "Suculenta escultural sin espinas; ideal para terrazas secas y canteros modernos.",
+    src: "assets/plants/agave.png"
+  },
+  {
+    id: "achira",
+    kind: "plant",
+    name: "Achira Roja",
+    sci: "Canna indica",
+    category: "primera",
+    heightLabel: "0.8 – 1.5 m",
+    defaultHeightM: 1.1,
+    minHeightM: 0.45,
+    idealMinM: 0.8,
+    idealMaxM: 1.5,
+    maxHeightM: 2.0,
+    minPotLiters: 18,
+    idealPotLiters: 45,
+    sun: "Sol pleno",
+    water: "Moderado a abundante",
+    notes: "Nativa sudamericana de hojas anchas tropicales y floración roja/naranja.",
+    src: "assets/plants/achira.png"
+  },
+  {
+    id: "esparraguera",
+    kind: "plant",
+    name: "Esparraguera (Sprengeri)",
+    sci: "Asparagus densiflorus",
+    category: "primera",
+    heightLabel: "0.35 – 0.65 m",
+    defaultHeightM: 0.48,
+    minHeightM: 0.2,
+    idealMinM: 0.35,
+    idealMaxM: 0.65,
+    maxHeightM: 0.85,
+    minPotLiters: 10,
+    idealPotLiters: 25,
+    sun: "Media sombra / Sol suave",
+    water: "Moderado",
+    notes: "Follaje plumoso colgante; ideal para bordes de canteros y macetas altas.",
+    src: "assets/plants/esparraguera.png"
+  },
   {
     id: "agapanto",
     kind: "plant",
@@ -430,7 +659,7 @@ export const BUILTIN_ITEMS = [
     src: "assets/plants/pasto_ingles.png"
   },
 
-  // === CANTEROS Y MACETAS (3D ROTATABLES + MATERIALIDADES) ===
+  // === CANTEROS Y MACETAS (3D ROTATABLES H/V + MATERIALIDADES) ===
   {
     id: "cantero_corten",
     kind: "container",
@@ -449,7 +678,8 @@ export const BUILTIN_ITEMS = [
     material: "corten",
     colorId: "corten_oxido",
     viewAngle: 32,
-    src: "assets/containers/cantero_corten.png"
+    viewPitch: 22,
+    src: null
   },
   {
     id: "cantero_madera",
@@ -469,7 +699,8 @@ export const BUILTIN_ITEMS = [
     material: "madera",
     colorId: "lapacho",
     viewAngle: 32,
-    src: "assets/containers/cantero_madera.png"
+    viewPitch: 22,
+    src: null
   },
   {
     id: "cantero_hierro_negro",
@@ -489,6 +720,7 @@ export const BUILTIN_ITEMS = [
     material: "hierro_negro",
     colorId: "hierro_satin",
     viewAngle: 32,
+    viewPitch: 22,
     src: null
   },
   {
@@ -509,6 +741,7 @@ export const BUILTIN_ITEMS = [
     material: "negro_oxidado",
     colorId: "negro_oxido",
     viewAngle: 32,
+    viewPitch: 22,
     src: null
   },
   {
@@ -529,7 +762,8 @@ export const BUILTIN_ITEMS = [
     material: "cemento",
     colorId: "gris_claro",
     viewAngle: 0,
-    src: "assets/containers/maceta_cemento.png"
+    viewPitch: 22,
+    src: null
   },
   {
     id: "maceta_terracota",
@@ -549,7 +783,8 @@ export const BUILTIN_ITEMS = [
     material: "terracota",
     colorId: "barro",
     viewAngle: 0,
-    src: "assets/containers/maceta_terracota.png"
+    viewPitch: 22,
+    src: null
   },
   {
     id: "maceta_plastico_negro",
@@ -569,6 +804,7 @@ export const BUILTIN_ITEMS = [
     material: "plastico",
     colorId: "plastico_negro",
     viewAngle: 0,
+    viewPitch: 22,
     src: null
   },
   {
@@ -589,6 +825,7 @@ export const BUILTIN_ITEMS = [
     material: "hierro_negro",
     colorId: "hierro_satin",
     viewAngle: 35,
+    viewPitch: 22,
     src: null
   },
   {
@@ -609,6 +846,7 @@ export const BUILTIN_ITEMS = [
     material: "plastico",
     colorId: "plastico_gris",
     viewAngle: 32,
+    viewPitch: 22,
     src: null
   },
 
@@ -632,6 +870,7 @@ export const BUILTIN_ITEMS = [
     material: "madera",
     colorId: "lapacho",
     viewAngle: 0,
+    viewPitch: 22,
     mulch: false,
     src: null
   },
@@ -654,6 +893,7 @@ export const BUILTIN_ITEMS = [
     material: "madera",
     colorId: "lapacho",
     viewAngle: 0,
+    viewPitch: 22,
     mulch: true,
     src: null
   },
@@ -676,6 +916,7 @@ export const BUILTIN_ITEMS = [
     material: "hierro_negro",
     colorId: "hierro_satin",
     viewAngle: 32,
+    viewPitch: 22,
     mulch: false,
     src: null
   }

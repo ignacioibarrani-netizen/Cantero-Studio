@@ -3,20 +3,6 @@ import { CONTAINER_MATERIALS, getContainerRenderSrc } from "./utils/containerRen
 
 const CUSTOM_STORAGE_KEY = "cantero_custom_catalog_v1";
 
-// Hydrate procedural src for built-in containers/soil that have src: null
-for (const item of BUILTIN_ITEMS) {
-  if (!item.src && item.kind === "container") {
-    item.src = getContainerRenderSrc({
-      shape: item.shape || "cantero_rect",
-      material: item.material || "cemento",
-      colorId: item.colorId || "gris_claro",
-      viewAngle: item.viewAngle || 0,
-      isGroundSoil: !!item.isGroundSoil,
-      mulch: !!item.mulch
-    });
-  }
-}
-
 function loadCustomCatalog() {
   try {
     const raw = localStorage.getItem(CUSTOM_STORAGE_KEY);
@@ -48,6 +34,12 @@ let maskMode = false;
 let brushSize = 28;
 let nextUid = 1;
 
+// Viewer Zoom & Pan State
+let viewZoom = 1;
+let viewPanX = 0;
+let viewPanY = 0;
+let spacePressed = false;
+
 // Scale & Perspective State
 const calibration = {
   pxPerMeter: 195,
@@ -76,12 +68,43 @@ let pendingContainerItem = null;
 let pendingExistingContainerUid = null;
 let newPlantImageDataUrl = null;
 
+const stageWrapper = document.getElementById("stageWrapper");
 const canvas = document.getElementById("mainCanvas");
 const ctx = canvas.getContext("2d");
 const imageCache = new Map();
 
 const tempCanvas = document.createElement("canvas");
 const tempCtx = tempCanvas.getContext("2d");
+
+function getScenePerspStrength() {
+  const q = perspective.quad;
+  const topW = Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+  const botW = Math.hypot(q.br.x - q.bl.x, q.br.y - q.bl.y);
+  const ratio = botW > 0.01 ? Math.max(0.25, Math.min(1.0, topW / botW)) : 0.65;
+  // Stronger convergence in scene quad -> stronger 3D Z-foreshortening on canteros
+  return 0.0004 + (1 - ratio) * 0.0024;
+}
+
+// Hydrate procedural src for built-in containers/soil
+function hydrateBuiltinContainers() {
+  const ps = getScenePerspStrength();
+  for (const item of BUILTIN_ITEMS) {
+    if (item.kind === "container") {
+      item.src = getContainerRenderSrc({
+        shape: item.shape || "cantero_rect",
+        material: item.material || "cemento",
+        colorId: item.colorId || "gris_claro",
+        viewAngle: item.viewAngle || 0,
+        viewPitch: item.viewPitch ?? 22,
+        perspStrength: ps,
+        isGroundSoil: !!item.isGroundSoil,
+        mulch: !!item.mulch,
+        liters: item.liters ?? 45
+      });
+    }
+  }
+}
+hydrateBuiltinContainers();
 
 function loadImage(src) {
   if (!src) return Promise.resolve(null);
@@ -104,6 +127,46 @@ function showToast(msg) {
   clearTimeout(el._timer);
   el._timer = setTimeout(() => el.classList.add("opacity-0"), 2600);
 }
+
+// Viewer Zoom & Pan helpers
+function applyViewTransform() {
+  canvas.style.transform = `translate(${viewPanX}px, ${viewPanY}px) scale(${viewZoom})`;
+  document.getElementById("valViewZoom").textContent = `${Math.round(viewZoom * 100)}%`;
+}
+
+function setViewerZoom(newZoom, pivotClientX = null, pivotClientY = null) {
+  const clamped = Math.max(0.5, Math.min(3.5, newZoom));
+  if (pivotClientX !== null && pivotClientY !== null) {
+    const wrapRect = stageWrapper.getBoundingClientRect();
+    const cx = pivotClientX - (wrapRect.left + wrapRect.width / 2);
+    const cy = pivotClientY - (wrapRect.top + wrapRect.height / 2);
+    const factor = clamped / viewZoom;
+    viewPanX = cx - (cx - viewPanX) * factor;
+    viewPanY = cy - (cy - viewPanY) * factor;
+  }
+  viewZoom = clamped;
+  if (Math.abs(viewZoom - 1) < 0.03) {
+    viewZoom = 1;
+    viewPanX = 0;
+    viewPanY = 0;
+  }
+  applyViewTransform();
+}
+
+stageWrapper.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.12 : 0.89;
+  setViewerZoom(viewZoom * factor, e.clientX, e.clientY);
+}, { passive: false });
+
+document.getElementById("btnZoomIn").addEventListener("click", () => setViewerZoom(viewZoom * 1.2));
+document.getElementById("btnZoomOut").addEventListener("click", () => setViewerZoom(viewZoom * 0.82));
+document.getElementById("btnZoomReset").addEventListener("click", () => {
+  viewZoom = 1;
+  viewPanX = 0;
+  viewPanY = 0;
+  applyViewTransform();
+});
 
 // Perspective Math
 function getPerspectiveFactorAtY(yPx) {
@@ -134,8 +197,22 @@ function getLayerRealHeightM(layer) {
 function getPotMaxHeightM(item, containerLiters) {
   if (!item || item.kind !== "plant") return Infinity;
   const idealPot = item.idealPotLiters || 50;
-  const ratio = Math.min(1.15, Math.pow(Math.max(3, containerLiters) / idealPot, 0.42));
+  const ratio = Math.min(1.15, Math.pow(Math.max(1, containerLiters) / idealPot, 0.42));
   return Math.max(item.minHeightM || 0.25, (item.idealMaxM || 2.0) * ratio);
+}
+
+function formatSubstrateRecommendation(liters) {
+  if (liters <= 0) {
+    return `<strong>0 L</strong> — Cantero vacío / portamaceta (ideal para colocar macetas adentro sin sustrato suelto).`;
+  }
+  const bags25 = Math.ceil(liters / 25);
+  const drain = Math.round(liters * 0.15);
+  const soil = Math.round(liters * 0.60);
+  const perlite = Math.max(1, liters - drain - soil);
+  return `
+    <div class="font-medium text-emerald-300 mb-0.5">Sustrato recomendado: ${liters} L (${bags25} ${bags25 === 1 ? "bolsa" : "bolsas"} de 25 L)</div>
+    <div class="text-zinc-400">• Drenaje (leca/pometina): ${drain} L · Tierra fértil: ${soil} L · Perlita/turba: ${perlite} L</div>
+  `;
 }
 
 function evaluateBotanicalRealism(layer) {
@@ -146,7 +223,13 @@ function evaluateBotanicalRealism(layer) {
   const container = layer.containerUid ? layers.find(l => l.uid === layer.containerUid) : null;
 
   if (container && !container.isGroundSoil) {
-    const potL = container.liters || 40;
+    const potL = container.liters ?? 40;
+    if (potL <= 0) {
+      return {
+        level: "error",
+        message: `${container.name} está en 0 L (sin sustrato). Sumale sustrato o poné una maceta adentro.`
+      };
+    }
     const minPot = item.minPotLiters || 15;
     if (potL < minPot) {
       return {
@@ -188,7 +271,7 @@ function clampScaleToPotIfNeeded(layer) {
   if (!layer.respectPotLimit || !layer.containerUid) return;
   const container = layers.find(l => l.uid === layer.containerUid);
   const item = catalog.find(p => p.id === layer.itemId);
-  if (!container || container.isGroundSoil || !item || item.kind !== "plant") return;
+  if (!container || container.isGroundSoil || (container.liters ?? 40) <= 0 || !item || item.kind !== "plant") return;
   const maxH = getPotMaxHeightM(item, container.liters || 40);
   const pf = perspective.autoScale ? (layer.perspFactor || 1) : 1;
   const maxScale = heightMToScale(maxH, pf);
@@ -231,14 +314,16 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
     shadowOpacity: item.isGroundSoil ? 20 : 45,
     shadowOffset: 15,
     visible: true,
-    liters: item.liters || 45,
+    liters: item.liters ?? 45,
     isGroundSoil: !!item.isGroundSoil,
     shape: item.shape || "cantero_rect",
     material: item.material || "cemento",
     colorId: item.colorId || "gris_claro",
     viewAngle: item.viewAngle ?? 0,
+    viewPitch: item.viewPitch ?? 22,
     mulch: !!item.mulch,
     containerUid: null,
+    parentContainerUid: null,
     respectPotLimit: true,
     maskCanvas
   };
@@ -263,17 +348,50 @@ function getSelectedLayer() {
   return layers.find(l => l.uid === selectedId) || null;
 }
 
-function detectContainerUnderLayer(plantLayer) {
-  if (plantLayer.kind !== "plant") return null;
+// Hierarchy helpers (Cantero -> Maceta -> Planta)
+function getDirectChildren(parentUid) {
+  return layers.filter(l => l.containerUid === parentUid || l.parentContainerUid === parentUid);
+}
+
+function getAllDescendants(parentUid) {
+  const result = [];
+  const stack = [...getDirectChildren(parentUid)];
+  while (stack.length) {
+    const child = stack.shift();
+    if (!result.includes(child)) {
+      result.push(child);
+      stack.push(...getDirectChildren(child.uid));
+    }
+  }
+  return result;
+}
+
+function getRootContainer(layer) {
+  let curr = layer;
+  const seen = new Set([curr.uid]);
+  while (true) {
+    const pUid = curr.containerUid || curr.parentContainerUid;
+    if (!pUid || seen.has(pUid)) break;
+    const parent = layers.find(l => l.uid === pUid);
+    if (!parent) break;
+    seen.add(parent.uid);
+    curr = parent;
+  }
+  return curr;
+}
+
+function detectContainerUnderLayer(targetLayer) {
   for (let i = layers.length - 1; i >= 0; i--) {
     const c = layers[i];
-    if (c.kind !== "container" || !c.visible) continue;
+    if (c.uid === targetLayer.uid || c.kind !== "container" || !c.visible) continue;
+    // Prevent circular containment
+    if (getAllDescendants(targetLayer.uid).some(d => d.uid === c.uid)) continue;
     const rect = getLayerRect(c);
     if (
-      plantLayer.x >= rect.x &&
-      plantLayer.x <= rect.x + rect.w &&
-      plantLayer.y >= rect.y - rect.h * 0.15 &&
-      plantLayer.y <= rect.y + rect.h * 0.75
+      targetLayer.x >= rect.x &&
+      targetLayer.x <= rect.x + rect.w &&
+      targetLayer.y >= rect.y - rect.h * 0.15 &&
+      targetLayer.y <= rect.y + rect.h * 0.75
     ) {
       return c;
     }
@@ -295,7 +413,6 @@ function renderScene(targetCtx, forExport = false) {
 
   if (compareMode && !forExport) return;
 
-  // Perspective Grid Overlay (under layers)
   if (!forExport && perspective.visible) {
     drawPerspectiveGrid(targetCtx, cw, ch);
   }
@@ -358,24 +475,28 @@ function renderScene(targetCtx, forExport = false) {
   if (dragState && dragState.type === "move" && dragState.shiftLocked) {
     const l = dragState.layer;
     targetCtx.save();
-    targetCtx.strokeStyle = "rgba(56, 189, 248, 0.85)";
-    targetCtx.lineWidth = 1.5;
-    targetCtx.setLineDash([5, 5]);
+    targetCtx.strokeStyle = "rgba(56, 189, 248, 0.9)";
+    targetCtx.lineWidth = Math.max(2, cw / 500);
+    targetCtx.setLineDash([7, 5]);
     targetCtx.beginPath();
     targetCtx.moveTo(l.x, 0);
     targetCtx.lineTo(l.x, ch);
     targetCtx.stroke();
     targetCtx.setLineDash([]);
 
+    const fontSize = Math.max(16, Math.round(cw / 65));
+    targetCtx.font = `600 ${fontSize}px Inter, sans-serif`;
     const badgeText = "Solo vertical (Shift) · sin profundidad";
-    targetCtx.font = "600 11px Inter, sans-serif";
-    const bw = targetCtx.measureText(badgeText).width + 16;
-    targetCtx.fillStyle = "rgba(15, 23, 42, 0.9)";
+    const bw = targetCtx.measureText(badgeText).width + 20;
+    const bh = fontSize + 12;
+    const bx = Math.min(cw - bw - 10, Math.max(10, l.x + 14));
+    const by = Math.max(10, l.y - bh - 10);
+    targetCtx.fillStyle = "rgba(15, 23, 42, 0.94)";
     targetCtx.beginPath();
-    targetCtx.roundRect(Math.min(cw - bw - 10, Math.max(10, l.x + 12)), Math.max(10, l.y - 28), bw, 22, 6);
+    targetCtx.roundRect(bx, by, bw, bh, 6);
     targetCtx.fill();
     targetCtx.fillStyle = "#38bdf8";
-    targetCtx.fillText(badgeText, Math.min(cw - bw - 10, Math.max(10, l.x + 12)) + 8, Math.max(10, l.y - 28) + 15);
+    targetCtx.fillText(badgeText, bx + 10, by + fontSize + 2);
     targetCtx.restore();
   }
 
@@ -384,10 +505,10 @@ function renderScene(targetCtx, forExport = false) {
     targetCtx.save();
     targetCtx.strokeStyle = "#38bdf8";
     targetCtx.fillStyle = "#38bdf8";
-    targetCtx.lineWidth = Math.max(2, cw / 450);
+    targetCtx.lineWidth = Math.max(3, cw / 380);
     for (const p of calibration.pts) {
       targetCtx.beginPath();
-      targetCtx.arc(p.x, p.y, Math.max(5, cw / 180), 0, Math.PI * 2);
+      targetCtx.arc(p.x, p.y, Math.max(7, cw / 140), 0, Math.PI * 2);
       targetCtx.fill();
     }
     if (calibration.pts.length === 2) {
@@ -400,7 +521,7 @@ function renderScene(targetCtx, forExport = false) {
     targetCtx.restore();
   }
 
-  // Selection bounding box, corner handles & real-height label
+  // Selection bounding box, corner handles & high-contrast legible real-height label
   const sel = getSelectedLayer();
   if (sel && sel.visible) {
     const rect = getLayerRect(sel);
@@ -418,27 +539,33 @@ function renderScene(targetCtx, forExport = false) {
       : "#34d399";
 
     targetCtx.strokeStyle = strokeCol;
-    targetCtx.lineWidth = Math.max(1.5, cw / 550);
-    targetCtx.setLineDash([6, 4]);
+    targetCtx.lineWidth = Math.max(2.5, cw / 420);
+    targetCtx.setLineDash([8, 5]);
     targetCtx.strokeRect(-rect.w / 2, -rect.h, rect.w, rect.h);
     targetCtx.setLineDash([]);
 
-    // Height tag pill at top-left of selection
+    // Large, high-contrast Height tag pill
     const hM = getLayerRealHeightM(sel);
     const label = `${hM >= 1 ? hM.toFixed(2) + " m" : Math.round(hM * 100) + " cm"}${realism.level !== "ok" ? " !" : ""}`;
-    targetCtx.font = `600 ${Math.max(11, Math.round(cw / 95))}px Inter, sans-serif`;
-    const padX = 7;
+    const fontSize = Math.max(20, Math.round(cw / 46));
+    targetCtx.font = `700 ${fontSize}px Inter, sans-serif`;
+    const padX = Math.round(fontSize * 0.55);
     const tw = targetCtx.measureText(label).width + padX * 2;
-    const th = 20;
-    targetCtx.fillStyle = "rgba(9, 9, 11, 0.85)";
+    const th = fontSize + 12;
+    const pillY = Math.max(-rect.h - th - 6, -sel.y + 4);
+
+    targetCtx.fillStyle = "rgba(9, 9, 11, 0.92)";
+    targetCtx.strokeStyle = strokeCol;
+    targetCtx.lineWidth = 2;
     targetCtx.beginPath();
-    targetCtx.roundRect(-rect.w / 2, -rect.h - th - 4, tw, th, 5);
+    targetCtx.roundRect(-rect.w / 2, pillY, tw, th, 7);
     targetCtx.fill();
+    targetCtx.stroke();
     targetCtx.fillStyle = strokeCol;
-    targetCtx.fillText(label, -rect.w / 2 + padX, -rect.h - 9);
+    targetCtx.fillText(label, -rect.w / 2 + padX, pillY + fontSize + 1);
 
     if (!maskMode) {
-      const handleR = Math.max(6, cw / 150);
+      const handleR = Math.max(8, cw / 120);
       const corners = [
         [-rect.w / 2, -rect.h],
         [rect.w / 2, -rect.h],
@@ -448,7 +575,7 @@ function renderScene(targetCtx, forExport = false) {
       for (const [cx, cy] of corners) {
         targetCtx.fillStyle = "#ffffff";
         targetCtx.strokeStyle = "#059669";
-        targetCtx.lineWidth = 2;
+        targetCtx.lineWidth = 2.5;
         targetCtx.beginPath();
         targetCtx.arc(cx, cy, handleR, 0, Math.PI * 2);
         targetCtx.fill();
@@ -458,7 +585,6 @@ function renderScene(targetCtx, forExport = false) {
     targetCtx.restore();
   }
 
-  // Scale reference bar (bottom-left)
   drawScaleBar(targetCtx, cw, ch);
 }
 
@@ -467,74 +593,117 @@ function drawScaleBar(targetCtx, cw, ch) {
   if (!px1m || px1m <= 10) return;
   const barPx = Math.min(cw * 0.35, px1m);
   const metersShown = barPx / px1m;
-  const x0 = 18;
-  const y0 = ch - 18;
+  const x0 = 20;
+  const y0 = ch - 20;
+  const fontSize = Math.max(15, Math.round(cw / 65));
 
   targetCtx.save();
-  targetCtx.fillStyle = "rgba(9, 9, 11, 0.72)";
+  targetCtx.fillStyle = "rgba(9, 9, 11, 0.86)";
   targetCtx.beginPath();
-  targetCtx.roundRect(x0 - 8, y0 - 24, barPx + 16, 32, 6);
+  targetCtx.roundRect(x0 - 10, y0 - fontSize - 16, barPx + 22, fontSize + 24, 7);
   targetCtx.fill();
 
   targetCtx.strokeStyle = "#38bdf8";
-  targetCtx.lineWidth = 2.5;
+  targetCtx.lineWidth = 3;
   targetCtx.beginPath();
-  targetCtx.moveTo(x0, y0 - 6);
+  targetCtx.moveTo(x0, y0 - 8);
   targetCtx.lineTo(x0, y0);
   targetCtx.lineTo(x0 + barPx, y0);
-  targetCtx.lineTo(x0 + barPx, y0 - 6);
+  targetCtx.lineTo(x0 + barPx, y0 - 8);
   targetCtx.stroke();
 
-  targetCtx.fillStyle = "#e4e4e7";
-  targetCtx.font = "600 11px Inter, sans-serif";
-  targetCtx.fillText(`${metersShown.toFixed(2)} m`, x0 + 4, y0 - 9);
+  targetCtx.fillStyle = "#f4f4f5";
+  targetCtx.font = `700 ${fontSize}px Inter, sans-serif`;
+  targetCtx.fillText(`${metersShown.toFixed(2)} m`, x0 + 6, y0 - 10);
   targetCtx.restore();
 }
 
 function drawPerspectiveGrid(targetCtx, cw, ch) {
   const q = perspective.quad;
   const p = {
-    tl: { x: q.tl.x * cw, y: q.tl.y * ch },
-    tr: { x: q.tr.x * cw, y: q.tr.y * ch },
-    br: { x: q.br.x * cw, y: q.br.y * ch },
-    bl: { x: q.bl.x * cw, y: q.bl.y * ch }
+    tl: { x: q.tl.x * cw, y: q.tl.y * ch, lbl: "Fondo Izq" },
+    tr: { x: q.tr.x * cw, y: q.tr.y * ch, lbl: "Fondo Der" },
+    br: { x: q.br.x * cw, y: q.br.y * ch, lbl: "Frente Der" },
+    bl: { x: q.bl.x * cw, y: q.bl.y * ch, lbl: "Frente Izq" }
   };
 
   targetCtx.save();
-  targetCtx.strokeStyle = "rgba(167, 139, 250, 0.55)";
-  targetCtx.lineWidth = 1.5;
+
+  // Translucent ground plane fill
+  targetCtx.fillStyle = "rgba(139, 92, 246, 0.12)";
+  targetCtx.beginPath();
+  targetCtx.moveTo(p.tl.x, p.tl.y);
+  targetCtx.lineTo(p.tr.x, p.tr.y);
+  targetCtx.lineTo(p.br.x, p.br.y);
+  targetCtx.lineTo(p.bl.x, p.bl.y);
+  targetCtx.closePath();
+  targetCtx.fill();
 
   const steps = 6;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const lx = p.tl.x + (p.bl.x - p.tl.x) * t;
-    const ly = p.tl.y + (p.bl.y - p.tl.y) * t;
-    const rx = p.tr.x + (p.br.x - p.tr.x) * t;
-    const ry = p.tr.y + (p.br.y - p.tr.y) * t;
-    targetCtx.beginPath();
-    targetCtx.moveTo(lx, ly);
-    targetCtx.lineTo(rx, ry);
-    targetCtx.stroke();
+  const drawGridLines = (strokeStyle, lineWidth) => {
+    targetCtx.strokeStyle = strokeStyle;
+    targetCtx.lineWidth = lineWidth;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const lx = p.tl.x + (p.bl.x - p.tl.x) * t;
+      const ly = p.tl.y + (p.bl.y - p.tl.y) * t;
+      const rx = p.tr.x + (p.br.x - p.tr.x) * t;
+      const ry = p.tr.y + (p.br.y - p.tr.y) * t;
+      targetCtx.beginPath();
+      targetCtx.moveTo(lx, ly);
+      targetCtx.lineTo(rx, ry);
+      targetCtx.stroke();
 
-    const tx = p.tl.x + (p.tr.x - p.tl.x) * t;
-    const ty = p.tl.y + (p.tr.y - p.tl.y) * t;
-    const bx = p.bl.x + (p.br.x - p.bl.x) * t;
-    const by = p.bl.y + (p.br.y - p.bl.y) * t;
-    targetCtx.beginPath();
-    targetCtx.moveTo(tx, ty);
-    targetCtx.lineTo(bx, by);
-    targetCtx.stroke();
-  }
+      const tx = p.tl.x + (p.tr.x - p.tl.x) * t;
+      const ty = p.tl.y + (p.tr.y - p.tl.y) * t;
+      const bx = p.bl.x + (p.br.x - p.bl.x) * t;
+      const by = p.bl.y + (p.br.y - p.bl.y) * t;
+      targetCtx.beginPath();
+      targetCtx.moveTo(tx, ty);
+      targetCtx.lineTo(bx, by);
+      targetCtx.stroke();
+    }
+  };
+
+  // Dark contrast halo + bright thick violet grid
+  drawGridLines("rgba(0, 0, 0, 0.7)", Math.max(5, cw / 240));
+  drawGridLines("rgba(196, 181, 253, 0.92)", Math.max(2.5, cw / 400));
+
+  // Thick outer border
+  targetCtx.strokeStyle = "#a78bfa";
+  targetCtx.lineWidth = Math.max(4, cw / 280);
+  targetCtx.beginPath();
+  targetCtx.moveTo(p.tl.x, p.tl.y);
+  targetCtx.lineTo(p.tr.x, p.tr.y);
+  targetCtx.lineTo(p.br.x, p.br.y);
+  targetCtx.lineTo(p.bl.x, p.bl.y);
+  targetCtx.closePath();
+  targetCtx.stroke();
+
+  // Large draggable corner handles with labels
+  const r = Math.max(10, cw / 95);
+  const fSize = Math.max(13, Math.round(cw / 75));
+  targetCtx.font = `600 ${fSize}px Inter, sans-serif`;
 
   for (const key of ["tl", "tr", "br", "bl"]) {
     const pt = p[key];
-    targetCtx.fillStyle = "#8b5cf6";
+    targetCtx.fillStyle = "#7c3aed";
     targetCtx.strokeStyle = "#ffffff";
-    targetCtx.lineWidth = 2;
+    targetCtx.lineWidth = 3;
     targetCtx.beginPath();
-    targetCtx.arc(pt.x, pt.y, Math.max(7, cw / 140), 0, Math.PI * 2);
+    targetCtx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
     targetCtx.fill();
     targetCtx.stroke();
+
+    const tw = targetCtx.measureText(pt.lbl).width + 10;
+    const lx = Math.min(cw - tw - 4, Math.max(4, pt.x - tw / 2));
+    const ly = key.startsWith("t") ? Math.max(4, pt.y - r - fSize - 10) : Math.min(ch - fSize - 8, pt.y + r + 4);
+    targetCtx.fillStyle = "rgba(9, 9, 11, 0.85)";
+    targetCtx.beginPath();
+    targetCtx.roundRect(lx, ly, tw, fSize + 8, 4);
+    targetCtx.fill();
+    targetCtx.fillStyle = "#ddd6fe";
+    targetCtx.fillText(pt.lbl, lx + 5, ly + fSize + 1);
   }
   targetCtx.restore();
 }
@@ -589,6 +758,20 @@ function paintMaskAt(layer, cx, cy) {
 
 // Canvas Pointer Events
 canvas.addEventListener("pointerdown", (e) => {
+  if (e.button === 1 || spacePressed) {
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    dragState = {
+      type: "pan",
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      origPanX: viewPanX,
+      origPanY: viewPanY
+    };
+    canvas.style.cursor = "move";
+    return;
+  }
+
   if (compareMode) return;
   canvas.setPointerCapture(e.pointerId);
   const { x, y } = getCanvasCoords(e);
@@ -608,7 +791,7 @@ canvas.addEventListener("pointerdown", (e) => {
 
   // 2. Perspective quad handles
   if (perspective.visible) {
-    const tol = Math.max(16, canvas.width / 60);
+    const tol = Math.max(20, canvas.width / 50);
     for (const key of ["tl", "tr", "br", "bl"]) {
       const px = perspective.quad[key].x * canvas.width;
       const py = perspective.quad[key].y * canvas.height;
@@ -631,7 +814,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (sel && sel.visible) {
     const rect = getLayerRect(sel);
     const { rx, ry } = toLayerLocal(sel, x, y);
-    const tol = Math.max(14, canvas.width / 65);
+    const tol = Math.max(16, canvas.width / 60);
     const corners = [
       [-rect.w / 2, -rect.h],
       [rect.w / 2, -rect.h],
@@ -662,13 +845,26 @@ canvas.addEventListener("pointerdown", (e) => {
 
   if (hitLayer) {
     selectedId = hitLayer.uid;
+    // Alt detaches; otherwise move root container + all attached plants/macetas together!
+    const root = e.altKey ? hitLayer : getRootContainer(hitLayer);
+    const group = e.altKey ? [hitLayer] : [root, ...getAllDescendants(root.uid)];
+    if (e.altKey && (hitLayer.containerUid || hitLayer.parentContainerUid)) {
+      hitLayer.containerUid = null;
+      hitLayer.parentContainerUid = null;
+      showToast(`${hitLayer.name} separada del contenedor`);
+    }
+
     dragState = {
       type: "move",
       layer: hitLayer,
-      startX: hitLayer.x,
-      offsetX: x - hitLayer.x,
-      offsetY: y - hitLayer.y,
-      prevPersp: perspective.autoScale ? getPerspectiveFactorAtY(hitLayer.y) : 1,
+      anchor: root,
+      group,
+      startX: root.x,
+      lastX: root.x,
+      lastY: root.y,
+      offsetX: x - root.x,
+      offsetY: y - root.y,
+      prevPersp: perspective.autoScale ? getPerspectiveFactorAtY(root.y) : 1,
       shiftLocked: false
     };
     canvas.style.cursor = "grabbing";
@@ -681,6 +877,13 @@ canvas.addEventListener("pointerdown", (e) => {
 
 canvas.addEventListener("pointermove", (e) => {
   if (!dragState) return;
+  if (dragState.type === "pan") {
+    viewPanX = dragState.origPanX + (e.clientX - dragState.startClientX);
+    viewPanY = dragState.origPanY + (e.clientY - dragState.startClientY);
+    applyViewTransform();
+    return;
+  }
+
   const { x, y } = getCanvasCoords(e);
 
   if (dragState.type === "persp") {
@@ -690,28 +893,44 @@ canvas.addEventListener("pointermove", (e) => {
   } else if (dragState.type === "mask") {
     paintMaskAt(dragState.layer, x, y);
   } else if (dragState.type === "move") {
-    const l = dragState.layer;
+    const anchor = dragState.anchor;
+    let targetX, targetY;
     if (e.shiftKey) {
-      // Shift = solo mover arriba o abajo (eje vertical), SIN eje de profundidad ni auto-escala
-      l.x = dragState.startX;
-      l.y = y - dragState.offsetY;
+      targetX = dragState.startX;
+      targetY = y - dragState.offsetY;
       dragState.shiftLocked = true;
-      dragState.prevPersp = perspective.autoScale ? getPerspectiveFactorAtY(l.y) : 1;
     } else {
-      l.x = x - dragState.offsetX;
-      l.y = y - dragState.offsetY;
+      targetX = x - dragState.offsetX;
+      targetY = y - dragState.offsetY;
       dragState.shiftLocked = false;
+    }
 
-      if (perspective.autoScale) {
-        const newPersp = getPerspectiveFactorAtY(l.y);
-        if (dragState.prevPersp > 0.05) {
-          l.scale = Math.max(0.08, Math.min(2.8, l.scale * (newPersp / dragState.prevPersp)));
-        }
-        l.perspFactor = newPersp;
-        dragState.prevPersp = newPersp;
-        clampScaleToPotIfNeeded(l);
+    const dx = targetX - dragState.lastX;
+    const dy = targetY - dragState.lastY;
+    dragState.lastX = targetX;
+    dragState.lastY = targetY;
+
+    let scaleRatio = 1;
+    if (!e.shiftKey && perspective.autoScale) {
+      const newPersp = getPerspectiveFactorAtY(targetY);
+      if (dragState.prevPersp > 0.05) {
+        scaleRatio = newPersp / dragState.prevPersp;
+      }
+      dragState.prevPersp = newPersp;
+    } else if (e.shiftKey) {
+      dragState.prevPersp = perspective.autoScale ? getPerspectiveFactorAtY(targetY) : 1;
+    }
+
+    for (const member of dragState.group) {
+      member.x += dx;
+      member.y += dy;
+      if (scaleRatio !== 1) {
+        member.scale = Math.max(0.08, Math.min(2.8, member.scale * scaleRatio));
+        member.perspFactor = getPerspectiveFactorAtY(member.y);
+        clampScaleToPotIfNeeded(member);
       }
     }
+
     syncInspectorValues();
     draw();
   } else if (dragState.type === "scale") {
@@ -726,42 +945,49 @@ canvas.addEventListener("pointermove", (e) => {
   }
 });
 
+async function refreshAllContainersPerspective() {
+  const conts = layers.filter(l => l.kind === "container");
+  for (const c of conts) {
+    await refreshContainerLayerAppearance(c);
+  }
+}
+
 function endDrag() {
-  if (dragState && dragState.type === "move" && dragState.layer.kind === "plant") {
+  if (dragState && dragState.type === "persp") {
+    refreshAllContainersPerspective();
+  } else if (dragState && dragState.type === "move") {
     const l = dragState.layer;
-    if (!l.containerUid) {
+    if (l.kind === "plant" && !l.containerUid) {
       const found = detectContainerUnderLayer(l);
       if (found) {
         l.containerUid = found.uid;
         clampScaleToPotIfNeeded(l);
         showToast(found.isGroundSoil ? `${l.name} ubicada en ${found.name}` : `${l.name} ubicada en ${found.name} (${found.liters} L)`);
         syncUI();
-        draw();
+      }
+    } else if (l.kind === "container" && !l.isGroundSoil && !l.parentContainerUid) {
+      const found = detectContainerUnderLayer(l);
+      if (found && found.uid !== l.uid) {
+        l.parentContainerUid = found.uid;
+        showToast(`${l.name} ubicada dentro de ${found.name}`);
+        syncUI();
       }
     }
   }
   dragState = null;
-  canvas.style.cursor = maskMode || calibration.mode ? "crosshair" : "grab";
+  canvas.style.cursor = maskMode || calibration.mode ? "crosshair" : spacePressed ? "move" : "grab";
   draw();
 }
 
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
 
-canvas.addEventListener("wheel", (e) => {
-  const sel = getSelectedLayer();
-  if (!sel || compareMode || maskMode || calibration.mode) return;
-  e.preventDefault();
-  const delta = e.deltaY < 0 ? 1.06 : 0.94;
-  sel.scale = Math.max(0.08, Math.min(2.8, sel.scale * delta));
-  clampScaleToPotIfNeeded(sel);
-  syncInspectorValues();
-  draw();
-}, { passive: false });
-
 window.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-  if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+  if (e.code === "Space") {
+    spacePressed = true;
+    canvas.style.cursor = "move";
+  } else if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
     e.preventDefault();
     deleteSelectedLayer();
   } else if (e.key === "Escape") {
@@ -770,6 +996,14 @@ window.addEventListener("keydown", (e) => {
     document.getElementById("potPlantPickerModal").classList.add("hidden");
     document.getElementById("addPlantModal").classList.add("hidden");
     document.getElementById("specSheetModal").classList.add("hidden");
+    document.getElementById("perspectiveGuideModal").classList.add("hidden");
+  }
+});
+
+window.addEventListener("keyup", (e) => {
+  if (e.code === "Space") {
+    spacePressed = false;
+    canvas.style.cursor = maskMode || calibration.mode ? "crosshair" : "grab";
   }
 });
 
@@ -815,7 +1049,7 @@ function openPotPlantPicker(containerItem = null, existingContainerUid = null) {
     title.textContent = `Plantar en ${c?.name || "maceta"}`;
     sub.textContent = c?.isGroundSoil
       ? "Elegí la especie para plantar directo en tierra."
-      : `Elegí una especie compatible con ${c?.liters || 45} L de sustrato.`;
+      : `Elegí una especie compatible con ${c?.liters ?? 45} L de sustrato.`;
     emptyBtn.classList.add("hidden");
   } else {
     title.textContent = `¿Querés ponerle una planta a "${containerItem.name}"?`;
@@ -836,8 +1070,8 @@ function renderPotPickerGrid() {
   const plants = catalog.filter(i => i.kind === "plant" && (!q || i.name.toLowerCase().includes(q) || (i.sci || "").toLowerCase().includes(q)));
 
   const targetLiters = pendingExistingContainerUid
-    ? (layers.find(l => l.uid === pendingExistingContainerUid)?.isGroundSoil ? 9999 : layers.find(l => l.uid === pendingExistingContainerUid)?.liters || 45)
-    : (pendingContainerItem?.isGroundSoil ? 9999 : pendingContainerItem?.liters || 45);
+    ? (layers.find(l => l.uid === pendingExistingContainerUid)?.isGroundSoil ? 9999 : layers.find(l => l.uid === pendingExistingContainerUid)?.liters ?? 45)
+    : (pendingContainerItem?.isGroundSoil ? 9999 : pendingContainerItem?.liters ?? 45);
 
   grid.innerHTML = "";
   for (const p of plants) {
@@ -915,29 +1149,20 @@ function renderCatalog() {
     return;
   }
 
+  const badgeMap = {
+    cerco: ["Cerco", "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"],
+    arboles: ["Árbol", "bg-teal-500/15 text-teal-300 border-teal-500/30"],
+    trepadoras: ["Trepad.", "bg-pink-500/15 text-pink-300 border-pink-500/30"],
+    primera: ["1ª Fila", "bg-violet-500/15 text-violet-300 border-violet-500/30"],
+    macetas: ["Maceta", "bg-orange-500/15 text-orange-300 border-orange-500/30"],
+    tierra: ["Tierra", "bg-lime-500/15 text-lime-300 border-lime-500/30"],
+    custom: ["Propia", "bg-amber-500/15 text-amber-300 border-amber-500/30"]
+  };
+
   for (const item of items) {
     const card = document.createElement("div");
     card.className = "group relative text-left bg-zinc-950/70 hover:bg-zinc-800/80 border border-zinc-800 hover:border-emerald-500/50 rounded-lg p-2 transition flex flex-col cursor-pointer";
-    const badgeColor =
-      item.category === "cerco"
-        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-        : item.category === "primera"
-        ? "bg-violet-500/15 text-violet-300 border-violet-500/30"
-        : item.category === "macetas"
-        ? "bg-orange-500/15 text-orange-300 border-orange-500/30"
-        : item.category === "tierra"
-        ? "bg-lime-500/15 text-lime-300 border-lime-500/30"
-        : "bg-amber-500/15 text-amber-300 border-amber-500/30";
-    const badgeLabel =
-      item.category === "cerco"
-        ? "Cerco"
-        : item.category === "primera"
-        ? "1ª Fila"
-        : item.category === "macetas"
-        ? "Maceta"
-        : item.category === "tierra"
-        ? "Tierra"
-        : "Propia";
+    const [badgeLabel, badgeColor] = badgeMap[item.category] || badgeMap.custom;
 
     card.innerHTML = `
       <div class="w-full h-24 rounded-md checker-bg flex items-center justify-center overflow-hidden mb-1.5 relative">
@@ -996,7 +1221,7 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   });
 });
 
-// Layers List UI
+// Layers List UI (Photoshop clipping/child hierarchy!)
 function renderLayersList() {
   const list = document.getElementById("layersList");
   document.getElementById("layerCount").textContent = layers.length;
@@ -1007,13 +1232,24 @@ function renderLayersList() {
     return;
   }
 
-  for (let i = layers.length - 1; i >= 0; i--) {
-    const l = layers[i];
+  const rendered = new Set();
+
+  function renderLayerRow(l, depth = 0) {
+    if (rendered.has(l.uid)) return;
+    rendered.add(l.uid);
+
     const isSel = l.uid === selectedId;
     const realism = evaluateBotanicalRealism(l);
     const hM = getLayerRealHeightM(l);
     const row = document.createElement("div");
-    row.className = `flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition ${
+
+    const indentStyle = depth === 1
+      ? "ml-4 border-l-2 border-l-emerald-500/60"
+      : depth >= 2
+      ? "ml-8 border-l-2 border-l-sky-500/60"
+      : "";
+
+    row.className = `flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border text-xs cursor-pointer transition ${indentStyle} ${
       isSel ? "bg-emerald-500/15 border-emerald-500/50 text-zinc-100" : "bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700"
     }`;
 
@@ -1023,8 +1259,13 @@ function renderLayersList() {
       ? `<span class="w-2 h-2 rounded-full bg-amber-400 shrink-0" title="${realism.message}"></span>`
       : "";
 
+    const childArrow = depth > 0
+      ? `<span class="text-emerald-400/80 font-mono text-[11px] shrink-0">↳</span>`
+      : "";
+
     row.innerHTML = `
-      <div class="flex items-center gap-2 min-w-0">
+      <div class="flex items-center gap-1.5 min-w-0">
+        ${childArrow}
         <img src="${l.src}" class="w-6 h-6 object-contain rounded bg-zinc-800 shrink-0" alt="" />
         <span class="truncate font-medium">${l.name}</span>
         ${warnDot}
@@ -1050,6 +1291,26 @@ function renderLayersList() {
     });
 
     list.appendChild(row);
+
+    // Render attached children immediately below parent (like Photoshop adjustment/clipping layers)
+    const children = getDirectChildren(l.uid);
+    for (let j = children.length - 1; j >= 0; j--) {
+      renderLayerRow(children[j], depth + 1);
+    }
+  }
+
+  // First render root layers top-to-bottom
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const l = layers[i];
+    if (!l.containerUid && !l.parentContainerUid) {
+      renderLayerRow(l, 0);
+    }
+  }
+  // Safety: render any orphan if parent was missing
+  for (let i = layers.length - 1; i >= 0; i--) {
+    if (!rendered.has(layers[i].uid)) {
+      renderLayerRow(layers[i], 0);
+    }
   }
 }
 
@@ -1060,8 +1321,11 @@ async function refreshContainerLayerAppearance(layer) {
     material: layer.material || "cemento",
     colorId: layer.colorId || "gris_claro",
     viewAngle: layer.viewAngle || 0,
+    viewPitch: layer.viewPitch ?? 22,
+    perspStrength: getScenePerspStrength(),
     isGroundSoil: !!layer.isGroundSoil,
-    mulch: !!layer.mulch
+    mulch: !!layer.mulch,
+    liters: layer.liters ?? 45
   });
   await loadImage(newSrc);
   layer.src = newSrc;
@@ -1076,14 +1340,12 @@ function renderMaterialAndColorControls(sel) {
   const viewSec = document.getElementById("containerViewSection");
   const matSec = document.getElementById("containerMaterialSection");
 
-  if (sel.shape === "tierra_organica") {
-    viewSec.classList.add("hidden");
-    matSec.classList.add("hidden");
-    return;
-  }
-
   viewSec.classList.remove("hidden");
-  matSec.classList.remove("hidden");
+  if (sel.shape === "tierra_organica") {
+    matSec.classList.add("hidden");
+  } else {
+    matSec.classList.remove("hidden");
+  }
 
   matSelect.innerHTML = "";
   for (const [mKey, mObj] of Object.entries(CONTAINER_MATERIALS)) {
@@ -1127,25 +1389,51 @@ function syncBotanicalInspector(sel) {
 
     const potWrap = document.getElementById("potLitersWrap");
     const soilNote = document.getElementById("groundSoilNote");
+    const parentWrap = document.getElementById("parentContainerWrap");
+
     if (sel.isGroundSoil) {
       potWrap.classList.add("hidden");
       soilNote.classList.remove("hidden");
+      parentWrap.classList.add("hidden");
     } else {
       potWrap.classList.remove("hidden");
       soilNote.classList.add("hidden");
-      document.getElementById("ctrlPotLiters").value = sel.liters || 45;
-      document.getElementById("valPotLiters").textContent = `${sel.liters || 45} L`;
+      parentWrap.classList.remove("hidden");
+      const liters = sel.liters ?? 45;
+      document.getElementById("ctrlPotLiters").value = liters;
+      document.getElementById("valPotLiters").textContent = `${liters} L`;
+      document.getElementById("recommendedSubstrateBox").innerHTML = formatSubstrateRecommendation(liters);
+
+      // Populate parent container dropdown (allow placing macetas inside canteros)
+      const pSel = document.getElementById("ctrlParentContainerSelect");
+      const validParents = layers.filter(l => l.kind === "container" && l.uid !== sel.uid && !getAllDescendants(sel.uid).some(d => d.uid === l.uid));
+      pSel.innerHTML = `<option value="">Suelto en el piso</option>`;
+      for (const pc of validParents) {
+        const opt = document.createElement("option");
+        opt.value = pc.uid;
+        opt.textContent = pc.isGroundSoil ? `${pc.name} (Suelo directo)` : `${pc.name} (${pc.liters} L)`;
+        if (sel.parentContainerUid === pc.uid) opt.selected = true;
+        pSel.appendChild(opt);
+      }
     }
 
     document.getElementById("ctrlContainerAngle").value = sel.viewAngle || 0;
     document.getElementById("valContainerAngle").textContent = `${sel.viewAngle || 0}°`;
     document.querySelectorAll(".view-preset-btn").forEach(b => {
       const a = Number(b.dataset.angle);
-      if (Math.abs((sel.viewAngle || 0) - a) <= 5) {
-        b.classList.add("border-emerald-500", "text-emerald-300", "bg-emerald-500/15");
-      } else {
-        b.classList.remove("border-emerald-500", "text-emerald-300", "bg-emerald-500/15");
-      }
+      b.classList.toggle("border-emerald-500", Math.abs((sel.viewAngle || 0) - a) <= 5);
+      b.classList.toggle("text-emerald-300", Math.abs((sel.viewAngle || 0) - a) <= 5);
+      b.classList.toggle("bg-emerald-500/15", Math.abs((sel.viewAngle || 0) - a) <= 5);
+    });
+
+    const pitch = sel.viewPitch ?? 22;
+    document.getElementById("ctrlContainerPitch").value = pitch;
+    document.getElementById("valContainerPitch").textContent = `${pitch}°`;
+    document.querySelectorAll(".pitch-preset-btn").forEach(b => {
+      const p = Number(b.dataset.pitch);
+      b.classList.toggle("border-emerald-500", Math.abs(pitch - p) <= 3);
+      b.classList.toggle("text-emerald-300", Math.abs(pitch - p) <= 3);
+      b.classList.toggle("bg-emerald-500/15", Math.abs(pitch - p) <= 3);
     });
 
     renderMaterialAndColorControls(sel);
@@ -1156,7 +1444,6 @@ function syncBotanicalInspector(sel) {
   contBox.classList.add("hidden");
   document.getElementById("valBotanicalRange").textContent = item?.heightLabel || "Personalizada";
 
-  // Populate container dropdown
   const select = document.getElementById("ctrlContainerSelect");
   const containers = layers.filter(l => l.kind === "container");
   select.innerHTML = `<option value="">En tierra directa (sin límite)</option>`;
@@ -1170,7 +1457,6 @@ function syncBotanicalInspector(sel) {
 
   document.getElementById("chkRespectPotLimit").checked = !!sel.respectPotLimit;
 
-  // Realism alert
   const realism = evaluateBotanicalRealism(sel);
   const alertBox = document.getElementById("realismAlert");
   const alertText = document.getElementById("realismAlertText");
@@ -1291,6 +1577,7 @@ function deleteSelectedLayer() {
   layers = layers.filter(l => l.uid !== removed);
   for (const l of layers) {
     if (l.containerUid === removed) l.containerUid = null;
+    if (l.parentContainerUid === removed) l.parentContainerUid = null;
   }
   selectedId = layers.length ? layers[layers.length - 1].uid : null;
   setMaskMode(false);
@@ -1324,15 +1611,17 @@ document.getElementById("chkAutoPerspective").addEventListener("change", (e) => 
   perspective.autoScale = e.target.checked;
   showToast(perspective.autoScale ? "Auto-escala por perspectiva activada" : "Auto-escala desactivada");
 });
+document.getElementById("btnStartPerspectiveNow").addEventListener("click", () => {
+  document.getElementById("perspectiveGuideModal").classList.add("hidden");
+  setPerspectiveVisible(true);
+});
 
-// Container 3D View & Material Listeners
+// Container 3D View (Horizontal + Vertical) & Material Listeners
 document.querySelectorAll(".view-preset-btn").forEach(btn => {
   btn.addEventListener("click", async () => {
     const sel = getSelectedLayer();
     if (!sel || sel.kind !== "container") return;
     sel.viewAngle = Number(btn.dataset.angle);
-    document.getElementById("ctrlContainerAngle").value = sel.viewAngle;
-    document.getElementById("valContainerAngle").textContent = `${sel.viewAngle}°`;
     await refreshContainerLayerAppearance(sel);
     syncBotanicalInspector(sel);
   });
@@ -1342,7 +1631,24 @@ document.getElementById("ctrlContainerAngle").addEventListener("input", async (e
   const sel = getSelectedLayer();
   if (!sel || sel.kind !== "container") return;
   sel.viewAngle = Number(e.target.value);
-  document.getElementById("valContainerAngle").textContent = `${sel.viewAngle}°`;
+  await refreshContainerLayerAppearance(sel);
+  syncBotanicalInspector(sel);
+});
+
+document.querySelectorAll(".pitch-preset-btn").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const sel = getSelectedLayer();
+    if (!sel || sel.kind !== "container") return;
+    sel.viewPitch = Number(btn.dataset.pitch);
+    await refreshContainerLayerAppearance(sel);
+    syncBotanicalInspector(sel);
+  });
+});
+
+document.getElementById("ctrlContainerPitch").addEventListener("input", async (e) => {
+  const sel = getSelectedLayer();
+  if (!sel || sel.kind !== "container") return;
+  sel.viewPitch = Number(e.target.value);
   await refreshContainerLayerAppearance(sel);
   syncBotanicalInspector(sel);
 });
@@ -1358,6 +1664,14 @@ document.getElementById("ctrlContainerMaterial").addEventListener("change", asyn
   }
   await refreshContainerLayerAppearance(sel);
   renderMaterialAndColorControls(sel);
+});
+
+document.getElementById("ctrlParentContainerSelect").addEventListener("change", (e) => {
+  const sel = getSelectedLayer();
+  if (!sel || sel.kind !== "container") return;
+  sel.parentContainerUid = e.target.value || null;
+  syncUI();
+  draw();
 });
 
 document.getElementById("btnPlantInContainer").addEventListener("click", () => {
@@ -1445,13 +1759,19 @@ document.getElementById("chkRespectPotLimit").addEventListener("change", (e) => 
   syncUI();
   draw();
 });
-document.getElementById("ctrlPotLiters").addEventListener("input", (e) => {
+document.getElementById("ctrlPotLiters").addEventListener("input", async (e) => {
   const sel = getSelectedLayer();
   if (!sel || sel.kind !== "container") return;
+  const prevZero = (sel.liters ?? 45) <= 0;
   sel.liters = Number(e.target.value);
+  const nowZero = sel.liters <= 0;
   document.getElementById("valPotLiters").textContent = sel.liters + " L";
+  document.getElementById("recommendedSubstrateBox").innerHTML = formatSubstrateRecommendation(sel.liters);
   for (const l of layers) {
     if (l.containerUid === sel.uid) clampScaleToPotIfNeeded(l);
+  }
+  if (prevZero !== nowZero) {
+    await refreshContainerLayerAppearance(sel);
   }
   renderLayersList();
   draw();
@@ -1464,7 +1784,7 @@ document.getElementById("btnFixRealism").addEventListener("click", () => {
   let targetM = item.defaultHeightM || ((item.idealMinM + item.idealMaxM) / 2);
   if (sel.containerUid) {
     const c = layers.find(l => l.uid === sel.containerUid);
-    if (c && !c.isGroundSoil) {
+    if (c && !c.isGroundSoil && (c.liters ?? 40) > 0) {
       const potMax = getPotMaxHeightM(item, c.liters || 40);
       targetM = Math.min(targetM, potMax * 0.95);
     }
@@ -1491,6 +1811,8 @@ document.getElementById("btnDuplicate").addEventListener("click", () => {
     uid: "layer_" + (nextUid++),
     x: sel.x + 35,
     y: sel.y + 8,
+    containerUid: null,
+    parentContainerUid: null,
     maskCanvas: document.createElement("canvas")
   };
   copy.maskCanvas.width = sel.maskCanvas.width;
@@ -1765,7 +2087,6 @@ dropzone.addEventListener("drop", (e) => {
   if (e.dataTransfer.files?.[0]) handleNewPlantFile(e.dataTransfer.files[0]);
 });
 
-// Drag & Drop directly onto catalog panel to load new plant fast
 const catalogAside = document.getElementById("catalogAside");
 catalogAside.addEventListener("dragover", (e) => { e.preventDefault(); });
 catalogAside.addEventListener("drop", (e) => {
@@ -1854,7 +2175,7 @@ document.getElementById("btnCompare").addEventListener("click", () => {
   draw();
 });
 
-// Upload Background Photo
+// Upload Background Photo -> MANDATORY perspective setup popup!
 document.getElementById("bgUploadInput").addEventListener("change", (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
@@ -1866,8 +2187,13 @@ document.getElementById("bgUploadInput").addEventListener("change", (e) => {
     const scale = img.naturalWidth > maxW ? maxW / img.naturalWidth : 1;
     canvas.width = Math.round(img.naturalWidth * scale);
     canvas.height = Math.round(img.naturalHeight * scale);
+    viewZoom = 1;
+    viewPanX = 0;
+    viewPanY = 0;
+    applyViewTransform();
     draw();
-    showToast("Foto cargada. Usá 'Calibrar escala' para ajustar medidas reales.");
+    // Show mandatory perspective guide modal immediately
+    document.getElementById("perspectiveGuideModal").classList.remove("hidden");
   };
   reader.readAsDataURL(file);
   e.target.value = "";
@@ -1893,7 +2219,6 @@ function buildSpecData() {
   const plantLayers = visibleLayers.filter(l => l.kind === "plant");
   const containerLayers = visibleLayers.filter(l => l.kind === "container");
 
-  // Group plants by itemId + containerUid
   const groupedPlants = new Map();
   for (const pl of plantLayers) {
     const item = catalog.find(i => i.id === pl.itemId) || {};
@@ -1906,7 +2231,7 @@ function buildSpecData() {
       groupedPlants.set(key, {
         name: pl.name,
         sci: item.sci || "",
-        category: item.category === "cerco" ? "Cerco" : item.category === "primera" ? "1ª Fila" : "Propia",
+        category: item.category === "cerco" ? "Cerco" : item.category === "arboles" ? "Árbol" : item.category === "trepadoras" ? "Trepadora" : item.category === "primera" ? "1ª Fila" : "Propia",
         count: 0,
         heights: [],
         heightRange: item.heightLabel || "—",
@@ -1932,17 +2257,20 @@ function buildSpecData() {
     const mat = CONTAINER_MATERIALS[c.material];
     const col = mat?.colors.find(x => x.id === c.colorId);
     const assigned = plantLayers.filter(p => p.containerUid === c.uid).map(p => p.name);
+    const parentC = c.parentContainerUid ? containerLayers.find(x => x.uid === c.parentContainerUid) : null;
+    const liters = c.liters ?? 45;
+    const bags = c.isGroundSoil || liters <= 0 ? 0 : Math.ceil(liters / 25);
     return {
-      name: c.name,
+      name: parentC ? `${c.name} (en ${parentC.name})` : c.name,
       isGroundSoil: !!c.isGroundSoil,
       materialLabel: c.shape === "tierra_organica" ? "Tierra orgánica" : `${mat?.label || c.material} (${col?.label || c.colorId})`,
-      liters: c.isGroundSoil ? "Suelo directo" : `${c.liters} L`,
-      viewAngle: c.shape === "tierra_organica" ? "Planta orgánica" : `${c.viewAngle || 0}°`,
+      liters: c.isGroundSoil ? "Suelo directo" : `${liters} L${bags ? ` (${bags}×25L)` : " (vacío)"}`,
+      viewAngle: c.shape === "tierra_organica" ? "Orgánica" : `H:${c.viewAngle || 0}° / V:${c.viewPitch ?? 22}°`,
       assignedPlants: assigned.length ? assigned.join(", ") : "Sin plantas asignadas"
     };
   });
 
-  const totalLiters = containerLayers.filter(c => !c.isGroundSoil).reduce((s, c) => s + (c.liters || 0), 0);
+  const totalLiters = containerLayers.filter(c => !c.isGroundSoil).reduce((s, c) => s + (c.liters ?? 0), 0);
   const distinctSpecies = new Set(plantLayers.map(p => p.itemId)).size;
 
   const outCanvas = document.createElement("canvas");
@@ -2005,7 +2333,7 @@ function renderSpecSheetHtml(data, standalone = false) {
       <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #10b981;padding-bottom:10px;margin-bottom:16px;">
         <div>
           <h1 style="margin:0;font-size:20px;font-weight:700;">Cantero Studio — Ficha Técnica de Paisajismo</h1>
-          <p style="margin:3px 0 0;font-size:12px;color:#52525b;">Desglose botánico, especificaciones de cultivo y contenedores</p>
+          <p style="margin:3px 0 0;font-size:12px;color:#52525b;">Desglose botánico, especificaciones de cultivo y sustratos recomendados</p>
         </div>
         <div style="text-align:right;font-size:12px;color:#52525b;">
           <div><strong>Fecha:</strong> ${data.dateStr}</div>
@@ -2027,8 +2355,8 @@ function renderSpecSheetHtml(data, standalone = false) {
           <div style="font-size:18px;font-weight:700;">${data.totalContainers}</div>
         </div>
         <div style="background:#f4f4f5;padding:10px;border-radius:8px;">
-          <div style="font-size:11px;color:#71717a;">Sustrato en Macetas</div>
-          <div style="font-size:18px;font-weight:700;">${data.totalLiters} L</div>
+          <div style="font-size:11px;color:#71717a;">Sustrato Total</div>
+          <div style="font-size:18px;font-weight:700;">${data.totalLiters} L (${Math.ceil(data.totalLiters / 25)}×25L)</div>
         </div>
       </div>
 
@@ -2042,7 +2370,7 @@ function renderSpecSheetHtml(data, standalone = false) {
           <tr style="background:#f4f4f5;text-align:left;font-size:11px;color:#52525b;">
             <th style="padding:8px 6px;text-align:center;">Cant.</th>
             <th style="padding:8px 6px;">Especie</th>
-            <th style="padding:8px 6px;">Ubicación</th>
+            <th style="padding:8px 6px;">Categoría</th>
             <th style="padding:8px 6px;">Altura est.</th>
             <th style="padding:8px 6px;">Contenedor / Suelo</th>
             <th style="padding:8px 6px;">Especificaciones</th>
@@ -2057,7 +2385,7 @@ function renderSpecSheetHtml(data, standalone = false) {
           <tr style="background:#f4f4f5;text-align:left;font-size:11px;color:#52525b;">
             <th style="padding:7px 6px;">Elemento</th>
             <th style="padding:7px 6px;">Materialidad y Color</th>
-            <th style="padding:7px 6px;">Volumen</th>
+            <th style="padding:7px 6px;">Sustrato</th>
             <th style="padding:7px 6px;">Vista</th>
             <th style="padding:7px 6px;">Plantas asignadas</th>
           </tr>
@@ -2100,7 +2428,7 @@ document.getElementById("btnDownloadSpecCsv").addEventListener("click", () => {
   const data = buildSpecData();
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [
-    ["Tipo", "Cantidad", "Nombre", "Científico / Material", "Altura / Volumen", "Ubicación / Vista", "Luz", "Riego", "Notas"].map(esc).join(",")
+    ["Tipo", "Cantidad", "Nombre", "Científico / Material", "Altura / Sustrato", "Ubicación / Vista", "Luz", "Riego", "Notas"].map(esc).join(",")
   ];
   for (const r of data.plantRows) {
     lines.push(["Planta", r.count, r.name, r.sci, `${r.avgHeightM.toFixed(2)} m (${r.heightRange})`, r.location, r.sun, r.water, r.notes].map(esc).join(","));
@@ -2123,6 +2451,10 @@ async function loadDemoScene() {
   canvas.width = bg.naturalWidth;
   canvas.height = bg.naturalHeight;
   calibration.pxPerMeter = 195;
+  viewZoom = 1;
+  viewPanX = 0;
+  viewPanY = 0;
+  applyViewTransform();
 
   await Promise.all(BUILTIN_ITEMS.map(p => loadImage(p.src)));
 
