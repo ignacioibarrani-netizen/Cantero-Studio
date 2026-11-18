@@ -1,5 +1,5 @@
 import { SAMPLE_BG_SRC, BUILTIN_ITEMS } from "./data/catalog.js";
-import { CONTAINER_MATERIALS, getContainerRenderSrc, getContainerRenderMeta, preloadContainerTextures } from "./utils/containerRenderer.js";
+import { CONTAINER_MATERIALS, getContainerRenderSrc, getContainerRenderMeta, preloadContainerTextures, drawSceneProjectedBox } from "./utils/containerRenderer.js";
 
 const CUSTOM_STORAGE_KEY = "cantero_custom_catalog_v1";
 
@@ -517,9 +517,10 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
     shadowOffset: 15,
     visible: true,
     locked: false,
-    customWidthM: item.customWidthM || null,
-    customHeightM: item.customHeightM || null,
-    customDepthM: item.customDepthM || null,
+    elevationM: 0,
+    customWidthM: item.customWidthM || (item.shape === "cantero_rect" ? 1.20 : item.shape === "jardinera_alta" ? 0.90 : item.shape === "tierra_cantero" ? 1.50 : item.shape === "maceta_cubo" ? 0.45 : null),
+    customHeightM: item.customHeightM || (item.kind === "container" && !item.isGroundSoil ? (item.defaultHeightM || 0.42) : item.shape === "tierra_cantero" ? 0.14 : null),
+    customDepthM: item.customDepthM || (item.shape === "cantero_rect" ? 0.45 : item.shape === "jardinera_alta" ? 0.35 : item.shape === "tierra_cantero" ? 0.65 : item.shape === "maceta_cubo" ? 0.45 : null),
     liters: item.liters ?? 45,
     isGroundSoil: !!item.isGroundSoil,
     shape: item.shape || "cantero_rect",
@@ -535,16 +536,31 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
   };
 }
 
+function isHomographyBox(layer) {
+  return (
+    layer &&
+    layer.kind === "container" &&
+    (layer.shape === "cantero_rect" || layer.shape === "maceta_cubo" || layer.shape === "jardinera_alta" || layer.shape === "tierra_cantero") &&
+    perspective.autoScale &&
+    homographyFwd &&
+    homographyInv
+  );
+}
+
 function getLayerRect(layer) {
+  if (isHomographyBox(layer) && layer._lastProjRect) {
+    return layer._lastProjRect;
+  }
   const img = imageCache.get(layer.src);
   if (!img) return { x: 0, y: 0, w: 0, h: 0 };
   const baseH = canvas.height * layer.scale;
   const aspect = img.naturalWidth / img.naturalHeight;
   const w = baseH * aspect;
   const h = baseH;
+  const elevPx = (layer.elevationM || 0) * getHomographyPxPerMeterAt(layer.x, layer.y);
   return {
     x: layer.x - w / 2,
-    y: layer.y - h,
+    y: layer.y - elevPx - h,
     w,
     h
   };
@@ -625,17 +641,53 @@ function renderScene(targetCtx, forExport = false) {
 
   for (const layer of layers) {
     if (!layer.visible) continue;
+
+    if (isHomographyBox(layer)) {
+      const { u, v } = screenToGround(layer.x, layer.y);
+      const proj = drawSceneProjectedBox(targetCtx, {
+        centerU: u,
+        centerV: v,
+        widthM: layer.customWidthM || 1.2,
+        heightM: layer.customHeightM || 0.42,
+        depthM: layer.customDepthM || 0.45,
+        yawDeg: layer.viewAngle || 0,
+        elevationM: layer.elevationM || 0,
+        material: layer.material || "cemento",
+        colorId: layer.colorId || "gris_claro",
+        isGroundSoil: !!layer.isGroundSoil,
+        mulch: !!layer.mulch,
+        liters: layer.liters ?? 45,
+        brightness: layer.brightness,
+        contrast: layer.contrast,
+        saturation: layer.saturation,
+        warmth: layer.warmth,
+        groundToScreen,
+        getPxPerMeterAt: getHomographyPxPerMeterAt
+      });
+      layer._lastProjRect = proj;
+
+      if (layer.shadowOpacity > 0 && proj.floorPts) {
+        targetCtx.save();
+        targetCtx.fillStyle = `rgba(10, 15, 10, ${(layer.shadowOpacity / 100) * 0.35})`;
+        targetCtx.beginPath();
+        proj.floorPts.forEach(([fx, fy], i) => (i === 0 ? targetCtx.moveTo(fx + 6, fy + 4) : targetCtx.lineTo(fx + 6, fy + 4)));
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.restore();
+      }
+      continue;
+    }
+
     const img = imageCache.get(layer.src);
     if (!img) continue;
 
     const rect = getLayerRect(layer);
 
-    // 1. Ground contact & cast shadow
     if (layer.shadowOpacity > 0) {
       targetCtx.save();
-      const shadowAlpha = (layer.shadowOpacity / 100) * 0.65;
+      const shadowAlpha = (layer.shadowOpacity / 100) * 0.65 * Math.max(0.35, 1 - (layer.elevationM || 0) * 0.25);
       const sx = layer.x + (layer.shadowOffset * rect.w * 0.004);
-      const sy = layer.y - rect.h * 0.03;
+      const sy = layer.y - rect.h * 0.02;
       const rx = rect.w * 0.42;
       const ry = Math.max(6, rect.h * 0.06);
       const grad = targetCtx.createRadialGradient(sx, sy, rx * 0.1, sx, sy, rx);
@@ -649,7 +701,6 @@ function renderScene(targetCtx, forExport = false) {
       targetCtx.restore();
     }
 
-    // 2. Masked + color-filtered item in offscreen buffer
     const tw = Math.max(1, Math.round(rect.w));
     const th = Math.max(1, Math.round(rect.h));
     tempCanvas.width = tw;
@@ -666,9 +717,9 @@ function renderScene(targetCtx, forExport = false) {
     tempCtx.drawImage(layer.maskCanvas, 0, 0, tw, th);
     tempCtx.globalCompositeOperation = "source-over";
 
-    // 3. Draw onto main canvas anchored at bottom center
+    const elevPx = (layer.elevationM || 0) * getHomographyPxPerMeterAt(layer.x, layer.y);
     targetCtx.save();
-    targetCtx.translate(layer.x, layer.y);
+    targetCtx.translate(layer.x, layer.y - elevPx);
     targetCtx.rotate((layer.rotation * Math.PI) / 180);
     if (layer.flip) targetCtx.scale(-1, 1);
     targetCtx.drawImage(tempCanvas, -rect.w / 2, -rect.h, rect.w, rect.h);
@@ -727,15 +778,11 @@ function renderScene(targetCtx, forExport = false) {
     targetCtx.restore();
   }
 
-  // Selection bounding box, corner handles & high-contrast legible real-height label
+  // Selection bounding box, Ground-Contact Indicator & Exact Dimension Pill
   const sel = getSelectedLayer();
   if (sel && sel.visible && !sel.locked) {
     const rect = getLayerRect(sel);
     const realism = evaluateBotanicalRealism(sel);
-    targetCtx.save();
-    targetCtx.translate(sel.x, sel.y);
-    targetCtx.rotate((sel.rotation * Math.PI) / 180);
-
     const strokeCol = maskMode
       ? "#fbbf24"
       : realism.level === "error"
@@ -744,40 +791,79 @@ function renderScene(targetCtx, forExport = false) {
       ? "#f59e0b"
       : "#34d399";
 
+    const elevM = sel.elevationM || 0;
+    const ppm = getHomographyPxPerMeterAt(sel.x, sel.y);
+    const elevPx = elevM * ppm;
+
+    targetCtx.save();
+    if (isHomographyBox(sel) && rect.floorPts) {
+      targetCtx.strokeStyle = elevM > 0.02 ? "#38bdf8" : "#10b981";
+      targetCtx.lineWidth = 2.5;
+      targetCtx.beginPath();
+      rect.floorPts.forEach(([fx, fy], i) => (i === 0 ? targetCtx.moveTo(fx, fy) : targetCtx.lineTo(fx, fy)));
+      targetCtx.closePath();
+      targetCtx.stroke();
+    } else {
+      targetCtx.strokeStyle = elevM > 0.02 ? "#38bdf8" : "#10b981";
+      targetCtx.lineWidth = 2.5;
+      targetCtx.beginPath();
+      targetCtx.ellipse(sel.x, sel.y, Math.max(14, rect.w * 0.28), Math.max(5, rect.w * 0.08), 0, 0, Math.PI * 2);
+      targetCtx.stroke();
+    }
+    if (elevM > 0.02) {
+      targetCtx.setLineDash([5, 4]);
+      targetCtx.strokeStyle = "#38bdf8";
+      targetCtx.beginPath();
+      targetCtx.moveTo(sel.x, sel.y);
+      targetCtx.lineTo(sel.x, sel.y - elevPx);
+      targetCtx.stroke();
+      targetCtx.setLineDash([]);
+    }
+    targetCtx.restore();
+
+    targetCtx.save();
     targetCtx.strokeStyle = strokeCol;
     targetCtx.lineWidth = Math.max(2.5, cw / 420);
     targetCtx.setLineDash([8, 5]);
-    targetCtx.strokeRect(-rect.w / 2, -rect.h, rect.w, rect.h);
+    targetCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
     targetCtx.setLineDash([]);
 
-    // Large, high-contrast Alto x Ancho tag pill
-    const hM = getLayerRealHeightM(sel);
-    const wM = getLayerRealWidthM(sel);
-    const label = `${formatDimM(hM)} × ${formatDimM(wM)}${realism.level !== "ok" ? " !" : ""}`;
-    const fontSize = Math.max(20, Math.round(cw / 46));
+    let label;
+    if (isHomographyBox(sel)) {
+      label = `${formatDimM(sel.customWidthM || 1.2)} × ${formatDimM(sel.customHeightM || 0.42)} × ${formatDimM(sel.customDepthM || 0.45)}`;
+    } else {
+      const hM = getLayerRealHeightM(sel);
+      const wM = getLayerRealWidthM(sel);
+      label = `${formatDimM(hM)} × ${formatDimM(wM)}`;
+    }
+    label += elevM > 0.02 ? ` · +${formatDimM(elevM)}` : " · Apoyado";
+    if (realism.level !== "ok") label += " !";
+
+    const fontSize = Math.max(18, Math.round(cw / 50));
     targetCtx.font = `700 ${fontSize}px Inter, sans-serif`;
     const padX = Math.round(fontSize * 0.55);
     const tw = targetCtx.measureText(label).width + padX * 2;
     const th = fontSize + 12;
-    const pillY = Math.max(-rect.h - th - 6, -sel.y + 4);
+    const pillX = Math.max(6, Math.min(cw - tw - 6, rect.x));
+    const pillY = Math.max(6, rect.y - th - 6);
 
     targetCtx.fillStyle = "rgba(9, 9, 11, 0.92)";
     targetCtx.strokeStyle = strokeCol;
     targetCtx.lineWidth = 2;
     targetCtx.beginPath();
-    targetCtx.roundRect(-rect.w / 2, pillY, tw, th, 7);
+    targetCtx.roundRect(pillX, pillY, tw, th, 7);
     targetCtx.fill();
     targetCtx.stroke();
     targetCtx.fillStyle = strokeCol;
-    targetCtx.fillText(label, -rect.w / 2 + padX, pillY + fontSize + 1);
+    targetCtx.fillText(label, pillX + padX, pillY + fontSize + 1);
 
-    if (!maskMode) {
+    if (!maskMode && !isHomographyBox(sel)) {
       const handleR = Math.max(8, cw / 120);
       const corners = [
-        [-rect.w / 2, -rect.h],
-        [rect.w / 2, -rect.h],
-        [-rect.w / 2, 0],
-        [rect.w / 2, 0]
+        [rect.x, rect.y],
+        [rect.x + rect.w, rect.y],
+        [rect.x, rect.y + rect.h],
+        [rect.x + rect.w, rect.y + rect.h]
       ];
       for (const [cx, cy] of corners) {
         targetCtx.fillStyle = "#ffffff";
@@ -1054,8 +1140,7 @@ canvas.addEventListener("pointerdown", (e) => {
     const l = layers[i];
     if (!l.visible || l.locked) continue;
     const rect = getLayerRect(l);
-    const { rx, ry } = toLayerLocal(l, x, y);
-    if (rx >= -rect.w / 2 && rx <= rect.w / 2 && ry >= -rect.h && ry <= 0) {
+    if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
       hitLayer = l;
       break;
     }
@@ -1066,6 +1151,7 @@ canvas.addEventListener("pointerdown", (e) => {
     selectedId = hitLayer.uid;
     // Move hitLayer + its descendants (plant -> only plant; maceta -> maceta + plants; cantero -> all inside)
     const group = e.altKey ? [hitLayer] : [hitLayer, ...getAllDescendants(hitLayer.uid)];
+    for (const m of group) m._dragStartElevM = m.elevationM || 0;
     if (e.altKey && (hitLayer.containerUid || hitLayer.parentContainerUid)) {
       hitLayer.containerUid = null;
       hitLayer.parentContainerUid = null;
@@ -1078,6 +1164,8 @@ canvas.addEventListener("pointerdown", (e) => {
       anchor: hitLayer,
       group,
       startX: hitLayer.x,
+      startY: hitLayer.y,
+      startMouseY: y,
       lastX: hitLayer.x,
       lastY: hitLayer.y,
       offsetX: x - hitLayer.x,
@@ -1116,8 +1204,14 @@ canvas.addEventListener("pointermove", (e) => {
     let targetX, targetY;
     if (e.shiftKey) {
       targetX = dragState.startX;
-      targetY = y - dragState.offsetY;
+      targetY = dragState.startY;
       dragState.shiftLocked = true;
+      const ppm = getHomographyPxPerMeterAt(dragState.startX, dragState.startY);
+      const deltaElevM = (dragState.startMouseY - y) / Math.max(15, ppm);
+      for (const member of dragState.group) {
+        const baseElev = member._dragStartElevM ?? 0;
+        member.elevationM = Math.max(0, +(baseElev + deltaElevM).toFixed(3));
+      }
     } else {
       targetX = x - dragState.offsetX;
       targetY = y - dragState.offsetY;
