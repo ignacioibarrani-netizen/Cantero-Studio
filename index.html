@@ -38,19 +38,19 @@
         <span>Nueva planta</span>
       </button>
 
-            <button id="btnUndo" type="button" disabled class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Deshacer última acción (Ctrl+Z)">
+      <button id="btnUndo" type="button" disabled class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Deshacer última acción (Ctrl+Z)">
         <svg class="w-3.5 h-3.5 text-zinc-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4"/></svg>
         <span>Deshacer</span>
       </button>
 
-      <button id="btnCalibrate" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Marcar una referencia real de 2 puntos en la foto">
+      <button id="btnCalibrate" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 text-xs font-medium text-sky-200 border border-sky-500/40 transition" title="Calibrar escala y perspectiva con 2 referencias (Adelante + Atrás)">
         <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 10v4m4-4v3m4-3v4m4-4v3M3 6h18v12H3z"/></svg>
-        <span>Calibrar escala</span>
+        <span>Calibrar escala y perspectiva</span>
       </button>
 
-      <button id="btnPerspective" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Configurar malla de perspectiva en el suelo">
+      <button id="btnPerspective" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Mostrar u ocultar guía visual de perspectiva">
         <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20L8 4h8l4 16H4zm2.5-8h11M12 4v16"/></svg>
-        <span>Malla perspectiva</span>
+        <span>Ver guía</span>
       </button>
 
       <button id="btnCompare" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Ver foto original sin plantas">
@@ -122,24 +122,25 @@
 
       <div id="calibrateBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-200 text-xs flex flex-wrap items-center gap-2 z-20 shrink-0">
         <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
-        <span id="calibratePromptText">Hacé clic en 2 puntos de un objeto cuya medida real conozcas (ej. puerta, pared o maceta)</span>
+        <span id="calibratePromptText">Paso 1 (Adelante): marcá 2 puntos de un objeto cercano cuya medida conozcas</span>
         <div id="calibrateInputGroup" class="hidden items-center gap-1.5">
-          <input id="calibrateMetersInput" type="number" step="0.05" min="0.05" max="30" value="1.80" class="w-20 px-2 py-0.5 rounded bg-zinc-900 border border-sky-500/50 text-zinc-100 text-xs" />
+          <input id="calibrateMetersInput" type="number" step="0.05" min="0.05" max="50" value="1.80" class="w-20 px-2 py-0.5 rounded bg-zinc-900 border border-sky-500/50 text-zinc-100 text-xs" />
           <span class="text-[11px]">m</span>
-          <button id="btnApplyCalibrate" type="button" class="px-2 py-0.5 rounded bg-sky-500 text-zinc-950 font-semibold text-[11px] hover:bg-sky-400">Aplicar</button>
+          <button id="btnApplyCalibrate" type="button" class="px-2 py-0.5 rounded bg-sky-500 text-zinc-950 font-semibold text-[11px] hover:bg-sky-400">Confirmar</button>
         </div>
+        <button id="btnSkipBackCalibrate" type="button" class="hidden px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 text-[11px] hover:bg-zinc-700">Foto sin perspectiva (omitir paso 2)</button>
         <button id="btnCancelCalibrate" type="button" class="ml-1 px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 text-[11px] hover:bg-zinc-700">Cancelar</button>
       </div>
 
       <div id="perspectiveBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-violet-500/15 border border-violet-500/40 text-violet-200 text-xs flex flex-wrap items-center gap-2 z-20 shrink-0">
         <span class="w-2 h-2 rounded-full bg-violet-400"></span>
-        <span>Arrastrá las 4 esquinas violetas sobre el suelo o cantero</span>
+        <span>Guía de perspectiva (podés mover las esquinas o usar "Calibrar escala y perspectiva")</span>
         <label class="inline-flex items-center gap-1 cursor-pointer ml-1">
           <input id="chkAutoPerspective" type="checkbox" checked class="accent-violet-500" />
-          <span>Auto-escalar plantas al mover</span>
+          <span>Auto-escalar al mover</span>
         </label>
-        <button id="btnExtendPerspectiveFront" type="button" class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-violet-500/40 text-violet-200 text-[11px]" title="Extender las líneas de fuga hacia adelante fuera de la foto">Proyectar frente</button>
-        <button id="btnExitPerspective" type="button" class="ml-1 px-2 py-0.5 rounded bg-violet-500 text-zinc-950 font-semibold text-[11px] hover:bg-violet-400">Ocultar malla</button>
+        <button id="btnExtendPerspectiveFront" type="button" class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-violet-500/40 text-violet-200 text-[11px]">Proyectar frente</button>
+        <button id="btnExitPerspective" type="button" class="ml-1 px-2 py-0.5 rounded bg-violet-500 text-zinc-950 font-semibold text-[11px] hover:bg-violet-400">Ocultar guía</button>
       </div>
 
       <div id="stageWrapper" class="relative w-full flex-1 min-h-0 flex items-center justify-center overflow-hidden rounded-lg bg-zinc-950/60 border border-zinc-900">
@@ -156,19 +157,19 @@
 
       <!-- Quick Hint & Scale Bar -->
       <div class="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 shrink-0">
-        <span id="scaleStatusText" class="text-sky-400/90 font-medium">Escala: 1 m ≈ 195 px</span>
+        <span id="scaleStatusText" class="text-sky-400/90 font-medium">Escala calibrada</span>
         <span>•</span>
         <span>Rueda = Zoom viewer</span>
         <span>•</span>
         <span>Arrastrar + <kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Shift</kbd> = solo subir/bajar</span>
         <span>•</span>
-        <span>Arrastrar maceta/cantero = mueve su contenido</span>
+        <span><kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Ctrl+Z</kbd> = deshacer</span>
         <span>•</span>
         <span>Supr = borrar</span>
       </div>
     </main>
 
-    <!-- Right Panel: Inspector & Layers (independent scroll) -->
+    <!-- Right Panel: Simplified Intuitive Inspector & Layers -->
     <aside class="w-full lg:w-80 lg:h-full bg-zinc-900/90 border-t lg:border-t-0 lg:border-l border-zinc-800 flex flex-col shrink-0 overflow-y-auto overscroll-contain max-h-[45vh] lg:max-h-full">
 
       <!-- Selected Item Inspector -->
@@ -182,123 +183,122 @@
           Tocá una planta, maceta o tierra en la foto, o agregá una del catálogo.
         </div>
 
-        <div id="inspectorControls" class="hidden space-y-3">
-          <!-- Real-world Size & Botanical Realism Box -->
-          <div id="botanicalBox" class="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800 space-y-2">
-            <div class="grid grid-cols-2 gap-2 text-xs">
-              <div class="bg-zinc-900/80 rounded px-2 py-1 border border-zinc-800/80 flex justify-between">
-                <span class="text-zinc-400">Alto</span>
-                <span id="valRealHeight" class="font-semibold text-zinc-100">1.80 m</span>
+        <div id="inspectorControls" class="hidden space-y-2.5">
+          <!-- Plant Size & Botanical Details -->
+          <div id="plantBotanicalDetails" class="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+            <div class="grid grid-cols-2 gap-2 items-end">
+              <div>
+                <label class="block text-[10px] text-zinc-400 mb-0.5">Altura (m)</label>
+                <input id="ctrlPlantHeightM" type="number" step="0.05" min="0.1" max="15" value="1.80" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-100" />
               </div>
-              <div class="bg-zinc-900/80 rounded px-2 py-1 border border-zinc-800/80 flex justify-between">
-                <span class="text-zinc-400">Ancho</span>
-                <span id="valRealWidth" class="font-semibold text-zinc-100">1.10 m</span>
+              <div class="bg-zinc-900/80 rounded px-2 py-1 border border-zinc-800/80 flex justify-between items-center text-xs h-[28px]">
+                <span class="text-zinc-400 text-[11px]">Ancho</span>
+                <span id="valPlantWidthM" class="font-semibold text-zinc-200">1.10 m</span>
               </div>
             </div>
-            <div id="plantBotanicalDetails" class="space-y-2">
-              <div class="flex items-center justify-between text-[11px]">
-                <span class="text-zinc-400">Rango natural</span>
-                <span id="valBotanicalRange" class="text-zinc-300">1.4 – 3.0 m</span>
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-zinc-400">Rango natural</span>
+              <span id="valBotanicalRange" class="text-zinc-300">1.4 – 3.0 m</span>
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Maceta / Cantero / Tierra</label>
+              <select id="ctrlContainerSelect" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200">
+                <option value="">En tierra directa (sin límite)</option>
+              </select>
+            </div>
+            <label class="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer">
+              <input id="chkRespectPotLimit" type="checkbox" checked class="accent-emerald-500" />
+              <span>Limitar altura según tamaño de maceta</span>
+            </label>
+            <div id="realismAlert" class="hidden p-2 rounded-md text-[11px] leading-snug space-y-1.5">
+              <p id="realismAlertText"></p>
+              <button id="btnFixRealism" type="button" class="px-2 py-1 rounded bg-zinc-900/90 hover:bg-zinc-800 text-[10px] font-semibold border border-current transition">Ajustar a escala realista</button>
+            </div>
+          </div>
+
+          <!-- Container Dimensions, 3D Views & Materiality -->
+          <div id="containerDetails" class="hidden p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+            <div id="customContainerDimsWrap" class="grid grid-cols-3 gap-1.5">
+              <div>
+                <label class="block text-[10px] text-zinc-400 mb-0.5">Ancho (m)</label>
+                <input id="ctrlCustomWidthM" type="number" step="0.05" min="0.05" max="50" value="1.20" class="w-full px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-100" />
               </div>
               <div>
-                <label class="block text-[11px] text-zinc-400 mb-1">Maceta / Cantero / Tierra</label>
-                <select id="ctrlContainerSelect" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200">
-                  <option value="">En tierra directa (sin límite)</option>
-                </select>
+                <label class="block text-[10px] text-zinc-400 mb-0.5">Alto (m)</label>
+                <input id="ctrlCustomHeightM" type="number" step="0.05" min="0.05" max="20" value="0.45" class="w-full px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-100" />
               </div>
-              <label class="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer">
-                <input id="chkRespectPotLimit" type="checkbox" checked class="accent-emerald-500" />
-                <span>Limitar tamaño máximo según maceta</span>
-              </label>
-              <div id="realismAlert" class="hidden p-2 rounded-md text-[11px] leading-snug space-y-1.5">
-                <p id="realismAlertText"></p>
-                <button id="btnFixRealism" type="button" class="px-2 py-1 rounded bg-zinc-900/90 hover:bg-zinc-800 text-[10px] font-semibold border border-current transition">Ajustar a escala realista</button>
+              <div>
+                <label class="block text-[10px] text-zinc-400 mb-0.5">Prof. (m)</label>
+                <input id="ctrlCustomDepthM" type="number" step="0.05" min="0.05" max="20" value="0.45" class="w-full px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-100" />
               </div>
             </div>
 
-            <div id="containerDetails" class="hidden space-y-2.5">
-              <div id="customContainerDimsWrap" class="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label class="block text-[10px] text-zinc-400 mb-0.5">Ancho (m)</label>
-                  <input id="ctrlCustomWidthM" type="number" step="0.05" min="0.05" max="50" value="1.20" class="w-full px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-100" />
+            <div id="potLitersWrap" class="space-y-1.5 pt-1 border-t border-zinc-800/80">
+              <div>
+                <div class="flex justify-between text-[11px] mb-1">
+                  <span class="text-zinc-400">Volumen de sustrato</span>
+                  <span id="valPotLiters" class="text-zinc-200 font-medium">45 L</span>
                 </div>
-                <div>
-                  <label class="block text-[10px] text-zinc-400 mb-0.5">Alto (m)</label>
-                  <input id="ctrlCustomHeightM" type="number" step="0.05" min="0.05" max="20" value="0.45" class="w-full px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-100" />
-                </div>
-                <div>
-                  <label class="block text-[10px] text-zinc-400 mb-0.5">Prof. (m)</label>
-                  <input id="ctrlCustomDepthM" type="number" step="0.05" min="0.05" max="20" value="0.45" class="w-full px-1.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-100" />
-                </div>
+                <input id="ctrlPotLiters" type="range" min="0" max="400" step="5" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
-
-              <div id="potLitersWrap" class="space-y-1.5">
-                <div>
-                  <div class="flex justify-between text-[11px] mb-1">
-                    <span class="text-zinc-400">Volumen de sustrato</span>
-                    <span id="valPotLiters" class="text-zinc-200 font-medium">45 L</span>
-                  </div>
-                  <input id="ctrlPotLiters" type="range" min="0" max="400" step="5" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-                </div>
-                <div id="recommendedSubstrateBox" class="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] text-zinc-300 leading-relaxed">
-                  <!-- Populated by JS -->
-                </div>
+              <div id="recommendedSubstrateBox" class="p-2 rounded bg-zinc-900/90 border border-zinc-800 text-[10px] text-zinc-300 leading-relaxed">
+                <!-- Populated by JS -->
               </div>
-
-              <div id="groundSoilNote" class="hidden text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded px-2 py-1">
-                Plantación directa al piso (sin límite de volumen)
-              </div>
-
-              <div id="parentContainerWrap">
-                <label class="block text-[11px] text-zinc-400 mb-1">Ubicado dentro de cantero / piso</label>
-                <select id="ctrlParentContainerSelect" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200">
-                  <option value="">Suelto en el piso</option>
-                </select>
-              </div>
-
-              <!-- 3D View / Rotation Controls (Horizontal + Vertical) -->
-              <div id="containerViewSection" class="space-y-2 pt-1.5 border-t border-zinc-800/80">
-                <div>
-                  <div class="flex justify-between items-center text-[11px] mb-1">
-                    <span class="text-zinc-400 font-medium">Rotación Horizontal</span>
-                    <span id="valContainerAngle" class="text-zinc-200 font-medium">0°</span>
-                  </div>
-                  <div class="grid grid-cols-5 gap-1 mb-1.5" id="viewPresetBtns">
-                    <button type="button" data-angle="0" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Frente</button>
-                    <button type="button" data-angle="40" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4</button>
-                    <button type="button" data-angle="90" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Perfil</button>
-                    <button type="button" data-angle="180" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Espalda</button>
-                    <button type="button" data-angle="320" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4 Izq</button>
-                  </div>
-                  <input id="ctrlContainerAngle" type="range" min="0" max="355" step="5" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-                </div>
-
-                <div>
-                  <div class="flex justify-between items-center text-[11px] mb-1">
-                    <span class="text-zinc-400 font-medium">Rotación Vertical (altura cámara)</span>
-                    <span id="valContainerPitch" class="text-zinc-200 font-medium">22°</span>
-                  </div>
-                  <div class="grid grid-cols-4 gap-1 mb-1.5">
-                    <button type="button" data-pitch="8" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Nivel</button>
-                    <button type="button" data-pitch="22" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Normal</button>
-                    <button type="button" data-pitch="42" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Picado</button>
-                    <button type="button" data-pitch="62" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Cenital</button>
-                  </div>
-                  <input id="ctrlContainerPitch" type="range" min="6" max="66" step="2" value="22" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-                </div>
-              </div>
-
-              <!-- Material & Color Controls -->
-              <div id="containerMaterialSection" class="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
-                <span class="block text-[11px] text-zinc-400 font-medium">Materialidad y Color</span>
-                <select id="ctrlContainerMaterial" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"></select>
-                <div id="containerColorSwatches" class="flex flex-wrap gap-1.5 pt-0.5"></div>
-              </div>
-
-              <button id="btnPlantInContainer" type="button" class="w-full px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-medium transition">
-                + Plantar especie acá adentro
-              </button>
             </div>
+
+            <div id="groundSoilNote" class="hidden text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded px-2 py-1">
+              Plantación directa al piso (sin límite de volumen)
+            </div>
+
+            <div id="parentContainerWrap">
+              <label class="block text-[11px] text-zinc-400 mb-1">Ubicado dentro de cantero / piso</label>
+              <select id="ctrlParentContainerSelect" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200">
+                <option value="">Suelto en el piso</option>
+              </select>
+            </div>
+
+            <!-- 3D View / Rotation Controls -->
+            <div id="containerViewSection" class="space-y-2 pt-1.5 border-t border-zinc-800/80">
+              <div>
+                <div class="flex justify-between items-center text-[11px] mb-1">
+                  <span class="text-zinc-400 font-medium">Vista Horizontal</span>
+                  <span id="valContainerAngle" class="text-zinc-200 font-medium">0°</span>
+                </div>
+                <div class="grid grid-cols-5 gap-1 mb-1" id="viewPresetBtns">
+                  <button type="button" data-angle="0" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Frente</button>
+                  <button type="button" data-angle="40" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4</button>
+                  <button type="button" data-angle="90" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Perfil</button>
+                  <button type="button" data-angle="180" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Espalda</button>
+                  <button type="button" data-angle="320" class="view-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">3/4 Izq</button>
+                </div>
+                <input id="ctrlContainerAngle" type="range" min="0" max="355" step="5" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+
+              <div>
+                <div class="flex justify-between items-center text-[11px] mb-1">
+                  <span class="text-zinc-400 font-medium">Vista Vertical (altura cámara)</span>
+                  <span id="valContainerPitch" class="text-zinc-200 font-medium">22°</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1 mb-1">
+                  <button type="button" data-pitch="8" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Nivel</button>
+                  <button type="button" data-pitch="22" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Normal</button>
+                  <button type="button" data-pitch="42" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Picado</button>
+                  <button type="button" data-pitch="62" class="pitch-preset-btn px-1 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 border border-zinc-700">Cenital</button>
+                </div>
+                <input id="ctrlContainerPitch" type="range" min="6" max="66" step="2" value="22" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+            </div>
+
+            <!-- Material & Color Controls -->
+            <div id="containerMaterialSection" class="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+              <span class="block text-[11px] text-zinc-400 font-medium">Materialidad y Color</span>
+              <select id="ctrlContainerMaterial" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200"></select>
+              <div id="containerColorSwatches" class="flex flex-wrap gap-1.5 pt-0.5"></div>
+            </div>
+
+            <button id="btnPlantInContainer" type="button" class="w-full px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-medium transition">
+              + Plantar especie acá adentro
+            </button>
           </div>
 
           <!-- Quick Actions -->
@@ -309,78 +309,69 @@
             <button id="btnLayerDown" type="button" class="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-medium text-zinc-200 border border-zinc-700 transition">Atrás</button>
           </div>
 
-          <!-- Transform -->
-          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
-            <div>
-              <div class="flex justify-between text-[11px] mb-1">
-                <span class="text-zinc-400">Tamaño (escala)</span>
-                <span id="valScale" class="text-zinc-200 font-medium">100%</span>
+          <!-- Collapsible Light, Shadow & Rotation -->
+          <details class="bg-zinc-950/60 rounded-lg border border-zinc-800/80 p-2.5">
+            <summary class="text-[11px] font-medium text-zinc-300 cursor-pointer flex items-center justify-between">
+              <span>Luz, Sombra e Inclinación</span>
+              <span class="text-[10px] text-zinc-500">▸</span>
+            </summary>
+            <div class="space-y-2 mt-2.5 pt-2 border-t border-zinc-800/70">
+              <div class="flex justify-end">
+                <button id="btnResetColor" type="button" class="text-[10px] text-emerald-400 hover:underline">Reset luz</button>
               </div>
-              <input id="ctrlScale" type="range" min="10" max="280" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-1">
-                <span class="text-zinc-400">Inclinación 2D</span>
-                <span id="valRotate" class="text-zinc-200 font-medium">0°</span>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Inclinación 2D</span><span id="valRotate" class="text-zinc-300">0°</span></div>
+                <input id="ctrlRotate" type="range" min="-25" max="25" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
-              <input id="ctrlRotate" type="range" min="-25" max="25" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Brillo</span><span id="valBright" class="text-zinc-300">100%</span></div>
+                <input id="ctrlBright" type="range" min="40" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Contraste</span><span id="valContrast" class="text-zinc-300">100%</span></div>
+                <input id="ctrlContrast" type="range" min="50" max="160" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Saturación</span><span id="valSat" class="text-zinc-300">100%</span></div>
+                <input id="ctrlSat" type="range" min="20" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Calidez (Sol / Sombra)</span><span id="valWarmth" class="text-zinc-300">0</span></div>
+                <input id="ctrlWarmth" type="range" min="-35" max="45" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Intensidad)</span><span id="valShadowOpacity" class="text-zinc-300">45%</span></div>
+                <input id="ctrlShadowOpacity" type="range" min="0" max="100" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Dirección)</span><span id="valShadowOffset" class="text-zinc-300">15</span></div>
+                <input id="ctrlShadowOffset" type="range" min="-60" max="60" value="15" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
             </div>
-          </div>
+          </details>
 
-          <!-- Color & Light Matching -->
-          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-medium text-zinc-300">Luz y Color del Entorno</span>
-              <button id="btnResetColor" type="button" class="text-[10px] text-emerald-400 hover:underline">Reset</button>
-            </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Brillo</span><span id="valBright" class="text-zinc-300">100%</span></div>
-              <input id="ctrlBright" type="range" min="40" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Contraste</span><span id="valContrast" class="text-zinc-300">100%</span></div>
-              <input id="ctrlContrast" type="range" min="50" max="160" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Saturación</span><span id="valSat" class="text-zinc-300">100%</span></div>
-              <input id="ctrlSat" type="range" min="20" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Calidez (Sol / Sombra)</span><span id="valWarmth" class="text-zinc-300">0</span></div>
-              <input id="ctrlWarmth" type="range" min="-35" max="45" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-          </div>
-
-          <!-- Ground Shadow -->
-          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
-            <span class="block text-[11px] font-medium text-zinc-300">Sombra en el Suelo</span>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Intensidad</span><span id="valShadowOpacity" class="text-zinc-300">45%</span></div>
-              <input id="ctrlShadowOpacity" type="range" min="0" max="100" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Dirección</span><span id="valShadowOffset" class="text-zinc-300">15</span></div>
-              <input id="ctrlShadowOffset" type="range" min="-60" max="60" value="15" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-          </div>
-
-          <!-- PNG Improvement & Mask -->
-          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
-            <span class="block text-[11px] font-medium text-zinc-300">Recorte, Fondo PNG y Máscara</span>
-            <button id="btnOpenPngCleaner" type="button" class="w-full px-2.5 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-200 text-xs font-medium transition">
-              Limpiar fondo blanco / halo PNG
-            </button>
-            <div class="flex gap-1.5">
-              <button id="btnToggleMask" type="button" class="flex-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-medium text-zinc-200 transition">
-                <span id="maskBtnText">Pintar máscara</span>
+          <!-- Collapsible PNG & Mask -->
+          <details class="bg-zinc-950/60 rounded-lg border border-zinc-800/80 p-2.5">
+            <summary class="text-[11px] font-medium text-zinc-300 cursor-pointer flex items-center justify-between">
+              <span>Recorte PNG y Máscara</span>
+              <span class="text-[10px] text-zinc-500">▸</span>
+            </summary>
+            <div class="space-y-2 mt-2.5 pt-2 border-t border-zinc-800/70">
+              <button id="btnOpenPngCleaner" type="button" class="w-full px-2.5 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-200 text-xs font-medium transition">
+                Limpiar fondo blanco / halo PNG
               </button>
-              <button id="btnClearMask" type="button" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 transition" title="Restaurar máscara">Reset</button>
+              <div class="flex gap-1.5">
+                <button id="btnToggleMask" type="button" class="flex-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-medium text-zinc-200 transition">
+                  <span id="maskBtnText">Pintar máscara</span>
+                </button>
+                <button id="btnClearMask" type="button" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 transition" title="Restaurar máscara">Reset</button>
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Tamaño pincel</span><span id="valBrushSize" class="text-zinc-300">28 px</span></div>
+                <input id="ctrlBrushSize" type="range" min="8" max="80" value="28" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
             </div>
-            <div>
-              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Tamaño pincel</span><span id="valBrushSize" class="text-zinc-300">28 px</span></div>
-              <input id="ctrlBrushSize" type="range" min="8" max="80" value="28" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-            </div>
-          </div>
+          </details>
 
           <button id="btnDeleteLayer" type="button" class="w-full px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-medium transition">
             Eliminar capa seleccionada
@@ -401,43 +392,33 @@
     </aside>
   </div>
 
-  <!-- Mandatory Perspective Setup Guide Modal (triggered on photo upload) -->
+  <!-- Mandatory Calibration + Perspective Setup Modal (triggered on photo upload) -->
   <div id="perspectiveGuideModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-zinc-900 border border-violet-500/50 rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+    <div class="bg-zinc-900 border border-sky-500/50 rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
       <div class="flex items-start gap-3">
-        <div class="w-10 h-10 rounded-lg bg-violet-500/20 border border-violet-500/40 flex items-center justify-center text-violet-300 shrink-0">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20L8 4h8l4 16H4zm2.5-8h11M12 4v16"/></svg>
+        <div class="w-10 h-10 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-300 shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 10v4m4-4v3m4-3v4m4-4v3M3 6h18v12H3z"/></svg>
         </div>
         <div>
-          <h3 class="text-base font-semibold text-zinc-100">Paso clave: ajustá la Malla de Perspectiva</h3>
-          <p class="text-xs text-zinc-400 mt-0.5">Para que las plantas, macetas y canteros se achiquen correctamente hacia el fondo y mantengan su escala real:</p>
+          <h3 class="text-base font-semibold text-zinc-100">Calibrá Escala y Perspectiva en 2 pasos</h3>
+          <p class="text-xs text-zinc-400 mt-0.5">Para que todas las plantas y canteros midan exactamente lo que escribís:</p>
         </div>
       </div>
 
-      <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex flex-col sm:flex-row gap-3 items-center">
-        <svg viewBox="0 0 220 130" class="w-44 h-28 shrink-0 rounded border border-zinc-800 bg-zinc-900">
-          <line x1="0" y1="45" x2="220" y2="45" stroke="#3f3f46" stroke-dasharray="3,3" stroke-width="1" />
-          <polygon points="58,52 162,52 204,118 16,118" fill="rgba(139,92,246,0.18)" stroke="#a78bfa" stroke-width="2.5" />
-          <line x1="84" y1="52" x2="63" y2="118" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
-          <line x1="110" y1="52" x2="110" y2="118" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
-          <line x1="136" y1="52" x2="157" y2="118" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
-          <line x1="44" y1="74" x2="176" y2="74" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
-          <line x1="30" y1="96" x2="190" y2="96" stroke="#a78bfa" stroke-width="1" opacity="0.6" />
-          <circle cx="58" cy="52" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
-          <circle cx="162" cy="52" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
-          <circle cx="204" cy="118" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
-          <circle cx="16" cy="118" r="5" fill="#8b5cf6" stroke="#fff" stroke-width="1.5" />
-        </svg>
-        <ol class="text-xs text-zinc-300 space-y-2 list-decimal list-inside">
-          <li>Arrastrá los <strong>2 puntos superiores</strong> (Fondo) al borde más lejano del piso o cantero.</li>
-          <li>Arrastrá los <strong>2 puntos inferiores</strong> (Frente) a la zona más cercana a la cámara, siguiendo las líneas de fuga del piso.</li>
-          <li>Luego usá <strong>Calibrar escala</strong> marcando una medida conocida (ej. puerta de 2 m o maceta) en el frente.</li>
-        </ol>
+      <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5 space-y-2.5 text-xs text-zinc-300">
+        <div class="flex items-start gap-2">
+          <span class="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold text-[11px] shrink-0">1</span>
+          <div><strong>Referencia Adelante:</strong> hacé clic en 2 puntos de algo cercano que conozcas (ej. una puerta de <code class="text-sky-300">2.00 m</code> o una baldosa de <code class="text-sky-300">0.60 m</code>).</div>
+        </div>
+        <div class="flex items-start gap-2">
+          <span class="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-bold text-[11px] shrink-0">2</span>
+          <div><strong>Referencia Atrás:</strong> hacé clic en 2 puntos de algo más lejano (ej. otra pared o ventana del fondo). Con esas dos medidas reales el sistema calcula la perspectiva exacta.</div>
+        </div>
       </div>
 
       <div class="flex justify-end gap-2">
-        <button id="btnStartPerspectiveNow" type="button" class="w-full sm:w-auto px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition">
-          Entendido, ajustar malla ahora
+        <button id="btnStartPerspectiveNow" type="button" class="w-full sm:w-auto px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white transition">
+          Empezar calibración ahora
         </button>
       </div>
     </div>

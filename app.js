@@ -48,6 +48,8 @@ const calibration = {
   pxPerMeter: 195,
   refPxPerMeter: 195,
   refY: 600,
+  step: 1, // 1 = Adelante, 2 = Atrás
+  frontSample: null, // { y, pxPerM }
   mode: false,
   pts: [] // [{x, y}, {x, y}]
 };
@@ -1023,7 +1025,14 @@ canvas.addEventListener("pointermove", (e) => {
     const rect = getLayerRect(l);
     const distNow = Math.max(10, Math.hypot(x - l.x, y - (l.y - rect.h / 2)));
     const factor = distNow / dragState.distStart;
-    l.scale = Math.max(0.015, Math.min(2.8, dragState.origScale * factor));
+    const prevScale = l.scale;
+    l.scale = Math.max(0.015, Math.min(4.0, dragState.origScale * factor));
+    if (l.kind === "container" && !l.isGroundSoil && prevScale > 0) {
+      const stepRatio = l.scale / prevScale;
+      if (l.customWidthM) l.customWidthM = +(l.customWidthM * stepRatio).toFixed(2);
+      if (l.customHeightM) l.customHeightM = +(l.customHeightM * stepRatio).toFixed(2);
+      if (l.customDepthM) l.customDepthM = +(l.customDepthM * stepRatio).toFixed(2);
+    }
     clampScaleToPotIfNeeded(l);
     syncInspectorValues();
     draw();
@@ -1668,8 +1677,6 @@ function renderMaterialAndColorControls(sel) {
 function syncBotanicalInspector(sel) {
   const hM = getLayerRealHeightM(sel);
   const wM = getLayerRealWidthM(sel);
-  document.getElementById("valRealHeight").textContent = formatDimM(hM);
-  document.getElementById("valRealWidth").textContent = formatDimM(wM);
 
   const plantBox = document.getElementById("plantBotanicalDetails");
   const contBox = document.getElementById("containerDetails");
@@ -1740,6 +1747,9 @@ function syncBotanicalInspector(sel) {
 
   plantBox.classList.remove("hidden");
   contBox.classList.add("hidden");
+  const inPlantH = document.getElementById("ctrlPlantHeightM");
+  if (document.activeElement !== inPlantH) inPlantH.value = hM.toFixed(2);
+  document.getElementById("valPlantWidthM").textContent = formatDimM(wM);
   document.getElementById("valBotanicalRange").textContent = item?.heightLabel || "Personalizada";
 
   const select = document.getElementById("ctrlContainerSelect");
@@ -1773,8 +1783,6 @@ function syncBotanicalInspector(sel) {
 function syncInspectorValues() {
   const sel = getSelectedLayer();
   if (!sel) return;
-  document.getElementById("ctrlScale").value = Math.round(sel.scale * 100);
-  document.getElementById("valScale").textContent = Math.round(sel.scale * 100) + "%";
   document.getElementById("ctrlRotate").value = sel.rotation;
   document.getElementById("valRotate").textContent = sel.rotation + "°";
   document.getElementById("ctrlBright").value = sel.brightness;
@@ -1852,23 +1860,34 @@ function setMaskMode(active) {
   draw();
 }
 
-function setCalibrationMode(active) {
+function setCalibrationMode(active, step = 1) {
   calibration.mode = active;
+  calibration.step = step;
   calibration.pts = [];
+  if (step === 1) calibration.frontSample = null;
   const banner = document.getElementById("calibrateBanner");
   const btn = document.getElementById("btnCalibrate");
   const inpGrp = document.getElementById("calibrateInputGroup");
+  const skipBtn = document.getElementById("btnSkipBackCalibrate");
   if (active) {
     if (maskMode) setMaskMode(false);
     banner.classList.remove("hidden");
     inpGrp.classList.add("hidden");
     inpGrp.classList.remove("flex");
-    document.getElementById("calibratePromptText").textContent =
-      "Hacé clic en 2 puntos de un objeto cuya medida real conozcas (ej. puerta, pared o maceta)";
+    if (step === 1) {
+      skipBtn.classList.add("hidden");
+      document.getElementById("calibratePromptText").textContent =
+        "Paso 1 (Adelante): marcá 2 puntos de algo cercano cuya medida conozcas (ej. puerta o maceta)";
+    } else {
+      skipBtn.classList.remove("hidden");
+      document.getElementById("calibratePromptText").textContent =
+        "Paso 2 (Atrás): marcá 2 puntos de algo lejano para calcular la perspectiva";
+    }
     btn.classList.add("tool-btn-active");
     canvas.style.cursor = "crosshair";
   } else {
     banner.classList.add("hidden");
+    skipBtn.classList.add("hidden");
     btn.classList.remove("tool-btn-active");
     canvas.style.cursor = maskMode ? "crosshair" : "grab";
   }
@@ -1907,6 +1926,20 @@ function deleteSelectedLayer() {
 // Calibration & Perspective Listeners
 document.getElementById("btnCalibrate").addEventListener("click", () => setCalibrationMode(!calibration.mode));
 document.getElementById("btnCancelCalibrate").addEventListener("click", () => setCalibrationMode(false));
+document.getElementById("btnSkipBackCalibrate").addEventListener("click", () => {
+  if (calibration.frontSample) {
+    calibration.refPxPerMeter = calibration.frontSample.pxPerM;
+    calibration.refY = calibration.frontSample.y;
+    calibration.pxPerMeter = calibration.frontSample.pxPerM;
+    perspective.autoScale = false;
+    document.getElementById("chkAutoPerspective").checked = false;
+  }
+  setCalibrationMode(false);
+  syncUI();
+  draw();
+  showToast("Calibrado sin perspectiva (escala uniforme)");
+});
+
 document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
   if (calibration.pts.length < 2) return;
   const meters = Number(document.getElementById("calibrateMetersInput").value);
@@ -1917,16 +1950,49 @@ document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
     showToast("Marcá dos puntos más separados");
     return;
   }
-  pushUndoSnapshot();
   const calY = Math.abs(p2.y - p1.y) > Math.abs(p2.x - p1.x) ? Math.max(p1.y, p2.y) : (p1.y + p2.y) / 2;
-  calibration.refPxPerMeter = distPx / meters;
-  calibration.refY = calY;
-  const calPersp = perspective.autoScale ? getPerspectiveFactorAtY(calY) : 1;
-  calibration.pxPerMeter = calibration.refPxPerMeter / Math.max(0.15, calPersp);
+  const pxPerM = distPx / meters;
+
+  if (calibration.step === 1) {
+    calibration.frontSample = { y: calY, pxPerM };
+    calibration.refPxPerMeter = pxPerM;
+    calibration.refY = calY;
+    calibration.pxPerMeter = pxPerM;
+    setCalibrationMode(true, 2);
+    showToast("Paso 1 listo. Ahora marcá una medida atrás para la perspectiva.");
+    return;
+  }
+
+  // Step 2: compute exact perspective ratio between frontSample and backSample!
+  pushUndoSnapshot();
+  const front = calibration.frontSample || { y: canvas.height * 0.9, pxPerM: calibration.refPxPerMeter };
+  const back = { y: calY, pxPerM };
+  // Ensure frontY > backY (near is lower on screen)
+  const near = front.y >= back.y ? front : back;
+  const far = front.y >= back.y ? back : front;
+
+  const ch = canvas.height || 714;
+  const ratio = Math.max(0.18, Math.min(1.0, far.pxPerM / Math.max(5, near.pxPerM)));
+  const halfBotW = 0.42;
+  const halfTopW = halfBotW * ratio;
+
+  perspective.quad = {
+    tl: { x: 0.5 - halfTopW, y: far.y / ch },
+    tr: { x: 0.5 + halfTopW, y: far.y / ch },
+    br: { x: 0.5 + halfBotW, y: near.y / ch },
+    bl: { x: 0.5 - halfBotW, y: near.y / ch }
+  };
+  perspective.autoScale = true;
+  document.getElementById("chkAutoPerspective").checked = true;
+  calibration.refPxPerMeter = near.pxPerM;
+  calibration.refY = near.y;
+  calibration.pxPerMeter = near.pxPerM;
+
   setCalibrationMode(false);
+  refreshAllContainersPerspective();
   syncUI();
   draw();
-  showToast(`Escala calibrada: 1 m ≈ ${Math.round(calibration.pxPerMeter)} px`);
+  showToast(`Escala y perspectiva calibradas (compresión fondo: ${Math.round(ratio * 100)}%)`);
 });
 
 document.getElementById("btnPerspective").addEventListener("click", () => setPerspectiveVisible(!perspective.visible));
@@ -1950,7 +2016,7 @@ document.getElementById("chkAutoPerspective").addEventListener("change", (e) => 
 });
 document.getElementById("btnStartPerspectiveNow").addEventListener("click", () => {
   document.getElementById("perspectiveGuideModal").classList.add("hidden");
-  setPerspectiveVisible(true);
+  setCalibrationMode(true, 1);
 });
 
 // Container 3D View (Horizontal + Vertical) & Material Listeners
@@ -2057,12 +2123,15 @@ document.getElementById("btnPlantInContainer").addEventListener("click", async (
 });
 
 // Inspector Listeners
-document.getElementById("ctrlScale").addEventListener("input", (e) => {
+document.getElementById("ctrlPlantHeightM").addEventListener("input", (e) => {
   const sel = getSelectedLayer();
-  if (!sel) return;
-  sel.scale = Number(e.target.value) / 100;
+  if (!sel || sel.kind !== "plant") return;
+  const hM = Math.max(0.08, Math.min(20, parseFloat(e.target.value) || 1.0));
+  const pf = perspective.autoScale ? (sel.perspFactor || getPerspectiveFactorAtY(sel.y)) : 1;
+  sel.scale = Math.max(0.015, heightMToScale(hM, pf));
   clampScaleToPotIfNeeded(sel);
-  syncInspectorValues();
+  document.getElementById("valPlantWidthM").textContent = formatDimM(getLayerRealWidthM(sel));
+  renderLayersList();
   draw();
 });
 document.getElementById("ctrlRotate").addEventListener("input", (e) => {
