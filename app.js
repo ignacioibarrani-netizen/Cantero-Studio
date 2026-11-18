@@ -1,5 +1,5 @@
 import { SAMPLE_BG_SRC, BUILTIN_ITEMS } from "./data/catalog.js";
-import { CONTAINER_MATERIALS, getContainerRenderSrc } from "./utils/containerRenderer.js";
+import { CONTAINER_MATERIALS, getContainerRenderSrc, preloadContainerTextures } from "./utils/containerRenderer.js";
 
 const CUSTOM_STORAGE_KEY = "cantero_custom_catalog_v1";
 
@@ -41,8 +41,13 @@ let viewPanY = 0;
 let spacePressed = false;
 
 // Scale & Perspective State
+const undoStack = [];
+const MAX_UNDO = 30;
+
 const calibration = {
   pxPerMeter: 195,
+  refPxPerMeter: 195,
+  refY: 600,
   mode: false,
   pts: [] // [{x, y}, {x, y}]
 };
@@ -121,6 +126,45 @@ function loadImage(src) {
   });
 }
 
+
+function cloneMaskCanvas(srcCanvas) {
+  const c = document.createElement("canvas");
+  c.width = srcCanvas.width;
+  c.height = srcCanvas.height;
+  c.getContext("2d").drawImage(srcCanvas, 0, 0);
+  return c;
+}
+
+function pushUndoSnapshot() {
+  const snap = {
+    layers: layers.map(l => ({ ...l, maskCanvas: cloneMaskCanvas(l.maskCanvas) })),
+    selectedId,
+    calibration: { ...calibration, pts: [] },
+    quad: JSON.parse(JSON.stringify(perspective.quad))
+  };
+  undoStack.push(snap);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  const btn = document.getElementById("btnUndo");
+  if (btn) btn.disabled = undoStack.length === 0;
+}
+
+async function undoLastAction() {
+  if (undoStack.length === 0) return;
+  const snap = undoStack.pop();
+  layers = snap.layers;
+  selectedId = snap.selectedId;
+  calibration.pxPerMeter = snap.calibration.pxPerMeter;
+  calibration.refPxPerMeter = snap.calibration.refPxPerMeter;
+  calibration.refY = snap.calibration.refY;
+  perspective.quad = snap.quad;
+  await Promise.all(layers.map(l => loadImage(l.src)));
+  const btn = document.getElementById("btnUndo");
+  if (btn) btn.disabled = undoStack.length === 0;
+  syncUI();
+  draw();
+  showToast("Acción deshecha");
+}
+
 function showToast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -183,16 +227,35 @@ function getPerspectiveFactorAtY(yPx) {
   return ratio + (1 - ratio) * t;
 }
 
+function getEffectivePxPerMeterAtFactor(pf) {
+  if (!perspective.autoScale) return calibration.refPxPerMeter || calibration.pxPerMeter;
+  const refPf = getPerspectiveFactorAtY(calibration.refY || (canvas.height * 0.85));
+  return (calibration.refPxPerMeter || calibration.pxPerMeter) * (Math.max(0.15, pf) / Math.max(0.15, refPf));
+}
+
 function heightMToScale(heightM, perspFactor = 1) {
   const ch = canvas.height || 714;
-  return (heightM * perspFactor * calibration.pxPerMeter) / ch;
+  const effPxPerM = getEffectivePxPerMeterAtFactor(perspFactor);
+  return (heightM * effPxPerM) / ch;
 }
 
 function getLayerRealHeightM(layer) {
   const ch = canvas.height || 714;
   const px = ch * layer.scale;
-  const pf = perspective.autoScale ? (layer.perspFactor || 1) : 1;
-  return px / (calibration.pxPerMeter * Math.max(0.15, pf));
+  const pf = perspective.autoScale ? (layer.perspFactor || getPerspectiveFactorAtY(layer.y)) : 1;
+  const effPxPerM = getEffectivePxPerMeterAtFactor(pf);
+  return px / Math.max(5, effPxPerM);
+}
+
+function getLayerRealWidthM(layer) {
+  const rect = getLayerRect(layer);
+  const pf = perspective.autoScale ? (layer.perspFactor || getPerspectiveFactorAtY(layer.y)) : 1;
+  const effPxPerM = getEffectivePxPerMeterAtFactor(pf);
+  return rect.w / Math.max(5, effPxPerM);
+}
+
+function formatDimM(m) {
+  return m >= 1 ? `${m.toFixed(2)} m` : `${Math.round(m * 100)} cm`;
 }
 
 function getPotMaxHeightM(item, containerLiters) {
@@ -315,6 +378,9 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
     shadowOpacity: item.isGroundSoil ? 20 : 45,
     shadowOffset: 15,
     visible: true,
+    locked: false,
+    customWidthM: item.customWidthM || null,
+    customHeightM: item.customHeightM || null,
     liters: item.liters ?? 45,
     isGroundSoil: !!item.isGroundSoil,
     shape: item.shape || "cantero_rect",
@@ -524,7 +590,7 @@ function renderScene(targetCtx, forExport = false) {
 
   // Selection bounding box, corner handles & high-contrast legible real-height label
   const sel = getSelectedLayer();
-  if (sel && sel.visible) {
+  if (sel && sel.visible && !sel.locked) {
     const rect = getLayerRect(sel);
     const realism = evaluateBotanicalRealism(sel);
     targetCtx.save();
@@ -545,9 +611,10 @@ function renderScene(targetCtx, forExport = false) {
     targetCtx.strokeRect(-rect.w / 2, -rect.h, rect.w, rect.h);
     targetCtx.setLineDash([]);
 
-    // Large, high-contrast Height tag pill
+    // Large, high-contrast Alto x Ancho tag pill
     const hM = getLayerRealHeightM(sel);
-    const label = `${hM >= 1 ? hM.toFixed(2) + " m" : Math.round(hM * 100) + " cm"}${realism.level !== "ok" ? " !" : ""}`;
+    const wM = getLayerRealWidthM(sel);
+    const label = `${formatDimM(hM)} × ${formatDimM(wM)}${realism.level !== "ok" ? " !" : ""}`;
     const fontSize = Math.max(20, Math.round(cw / 46));
     targetCtx.font = `700 ${fontSize}px Inter, sans-serif`;
     const padX = Math.round(fontSize * 0.55);
@@ -590,32 +657,32 @@ function renderScene(targetCtx, forExport = false) {
 }
 
 function drawScaleBar(targetCtx, cw, ch) {
-  const px1m = calibration.pxPerMeter;
+  const px1m = calibration.refPxPerMeter || calibration.pxPerMeter;
   if (!px1m || px1m <= 10) return;
-  const barPx = Math.min(cw * 0.35, px1m);
+  const barPx = Math.min(cw * 0.32, px1m);
   const metersShown = barPx / px1m;
-  const x0 = 20;
-  const y0 = ch - 20;
   const fontSize = Math.max(15, Math.round(cw / 65));
+  const x0 = 18;
+  const y0 = fontSize + 24;
 
   targetCtx.save();
   targetCtx.fillStyle = "rgba(9, 9, 11, 0.86)";
   targetCtx.beginPath();
-  targetCtx.roundRect(x0 - 10, y0 - fontSize - 16, barPx + 22, fontSize + 24, 7);
+  targetCtx.roundRect(x0 - 10, 10, barPx + 22, fontSize + 22, 7);
   targetCtx.fill();
 
   targetCtx.strokeStyle = "#38bdf8";
   targetCtx.lineWidth = 3;
   targetCtx.beginPath();
-  targetCtx.moveTo(x0, y0 - 8);
+  targetCtx.moveTo(x0, y0 - 7);
   targetCtx.lineTo(x0, y0);
   targetCtx.lineTo(x0 + barPx, y0);
-  targetCtx.lineTo(x0 + barPx, y0 - 8);
+  targetCtx.lineTo(x0 + barPx, y0 - 7);
   targetCtx.stroke();
 
   targetCtx.fillStyle = "#f4f4f5";
   targetCtx.font = `700 ${fontSize}px Inter, sans-serif`;
-  targetCtx.fillText(`${metersShown.toFixed(2)} m`, x0 + 6, y0 - 10);
+  targetCtx.fillText(`${metersShown.toFixed(2)} m`, x0 + 6, y0 - 8);
   targetCtx.restore();
 }
 
@@ -797,6 +864,7 @@ canvas.addEventListener("pointerdown", (e) => {
       const px = perspective.quad[key].x * canvas.width;
       const py = perspective.quad[key].y * canvas.height;
       if (Math.hypot(x - px, y - py) <= tol) {
+        pushUndoSnapshot();
         dragState = { type: "persp", key };
         return;
       }
@@ -812,7 +880,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
 
   // 4. Corner scale handles of selected layer
-  if (sel && sel.visible) {
+  if (sel && sel.visible && !sel.locked) {
     const rect = getLayerRect(sel);
     const { rx, ry } = toLayerLocal(sel, x, y);
     const tol = Math.max(16, canvas.width / 60);
@@ -825,6 +893,7 @@ canvas.addEventListener("pointerdown", (e) => {
     for (const [hx, hy] of corners) {
       if (Math.hypot(rx - hx, ry - hy) <= tol) {
         const distStart = Math.max(10, Math.hypot(x - sel.x, y - (sel.y - rect.h / 2)));
+        pushUndoSnapshot();
         dragState = { type: "scale", layer: sel, origScale: sel.scale, distStart };
         return;
       }
@@ -835,7 +904,7 @@ canvas.addEventListener("pointerdown", (e) => {
   let hitLayer = null;
   for (let i = layers.length - 1; i >= 0; i--) {
     const l = layers[i];
-    if (!l.visible) continue;
+    if (!l.visible || l.locked) continue;
     const rect = getLayerRect(l);
     const { rx, ry } = toLayerLocal(l, x, y);
     if (rx >= -rect.w / 2 && rx <= rect.w / 2 && ry >= -rect.h && ry <= 0) {
@@ -845,6 +914,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
 
   if (hitLayer) {
+    pushUndoSnapshot();
     selectedId = hitLayer.uid;
     // Move hitLayer + its descendants (plant -> only plant; maceta -> maceta + plants; cantero -> all inside)
     const group = e.altKey ? [hitLayer] : [hitLayer, ...getAllDescendants(hitLayer.uid)];
@@ -982,8 +1052,15 @@ function endDrag() {
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
 
+document.getElementById("btnUndo").addEventListener("click", undoLastAction);
+
 window.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    undoLastAction();
+    return;
+  }
   if (e.code === "Space") {
     spacePressed = true;
     canvas.style.cursor = "move";
@@ -1001,6 +1078,11 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("keyup", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    undoLastAction();
+    return;
+  }
   if (e.code === "Space") {
     spacePressed = false;
     canvas.style.cursor = maskMode || calibration.mode ? "crosshair" : "grab";
@@ -1366,6 +1448,11 @@ function renderLayersList() {
         ${depth > 0 ? `<button type="button" class="detach-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-amber-300" title="Sacar al piso (desvincular)">⇤</button>` : ""}
         <button type="button" class="up-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-100" title="Subir capa">↑</button>
         <button type="button" class="down-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-100" title="Bajar capa">↓</button>
+        <button type="button" class="lock-btn p-1 rounded hover:bg-zinc-800 ${l.locked ? "text-amber-400" : "text-zinc-500 hover:text-zinc-300"}" title="${l.locked ? "Desbloquear capa" : "Bloquear capa"}">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="${l.locked ? "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" : "M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"}"/>
+          </svg>
+        </button>
         <button type="button" class="vis-btn p-1 rounded hover:bg-zinc-800 ${l.visible ? "text-zinc-300" : "text-zinc-600"}" title="Mostrar/Ocultar">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="${l.visible ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18"}"/>
@@ -1424,6 +1511,14 @@ function renderLayersList() {
     });
 
     row.addEventListener("click", (e) => {
+      if (e.target.closest(".lock-btn")) {
+        l.locked = !l.locked;
+        if (l.locked && selectedId === l.uid) selectedId = null;
+        renderLayersList();
+        draw();
+        showToast(l.locked ? `${l.name} bloqueada` : `${l.name} desbloqueada`);
+        return;
+      }
       if (e.target.closest(".vis-btn")) {
         l.visible = !l.visible;
         renderLayersList();
@@ -1496,7 +1591,9 @@ async function refreshContainerLayerAppearance(layer) {
     perspStrength: getScenePerspStrength(),
     isGroundSoil: !!layer.isGroundSoil,
     mulch: !!layer.mulch,
-    liters: layer.liters ?? 45
+    liters: layer.liters ?? 45,
+    customWidthM: layer.customWidthM,
+    customHeightM: layer.customHeightM
   });
   await loadImage(newSrc);
   layer.src = newSrc;
@@ -1548,7 +1645,9 @@ function renderMaterialAndColorControls(sel) {
 
 function syncBotanicalInspector(sel) {
   const hM = getLayerRealHeightM(sel);
-  document.getElementById("valRealHeight").textContent = hM >= 1 ? `${hM.toFixed(2)} m` : `${Math.round(hM * 100)} cm`;
+  const wM = getLayerRealWidthM(sel);
+  document.getElementById("valRealHeight").textContent = formatDimM(hM);
+  document.getElementById("valRealWidth").textContent = formatDimM(wM);
 
   const plantBox = document.getElementById("plantBotanicalDetails");
   const contBox = document.getElementById("containerDetails");
@@ -1570,6 +1669,8 @@ function syncBotanicalInspector(sel) {
       potWrap.classList.remove("hidden");
       soilNote.classList.add("hidden");
       parentWrap.classList.remove("hidden");
+      document.getElementById("ctrlCustomWidthM").value = (sel.customWidthM || wM).toFixed(2);
+      document.getElementById("ctrlCustomHeightM").value = (sel.customHeightM || hM).toFixed(2);
       const liters = sel.liters ?? 45;
       document.getElementById("ctrlPotLiters").value = liters;
       document.getElementById("valPotLiters").textContent = `${liters} L`;
@@ -1764,6 +1865,7 @@ function setPerspectiveVisible(active) {
 
 function deleteSelectedLayer() {
   if (!selectedId) return;
+  pushUndoSnapshot();
   const removed = selectedId;
   layers = layers.filter(l => l.uid !== removed);
   for (const l of layers) {
@@ -1789,9 +1891,12 @@ document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
     showToast("Marcá dos puntos más separados");
     return;
   }
-  const calY = Math.max(p1.y, p2.y);
+  pushUndoSnapshot();
+  const calY = (p1.y + p2.y) / 2;
+  calibration.refPxPerMeter = distPx / meters;
+  calibration.refY = calY;
   const calPersp = perspective.autoScale ? getPerspectiveFactorAtY(calY) : 1;
-  calibration.pxPerMeter = (distPx / meters) / Math.max(0.15, calPersp);
+  calibration.pxPerMeter = calibration.refPxPerMeter / Math.max(0.15, calPersp);
   setCalibrationMode(false);
   syncUI();
   draw();
@@ -1845,6 +1950,23 @@ document.getElementById("ctrlContainerPitch").addEventListener("input", async (e
   await refreshContainerLayerAppearance(sel);
   syncBotanicalInspector(sel);
 });
+
+
+async function applyCustomContainerDims() {
+  const sel = getSelectedLayer();
+  if (!sel || sel.kind !== "container") return;
+  const wM = Math.max(0.2, Math.min(5.0, Number(document.getElementById("ctrlCustomWidthM").value) || 1.2));
+  const hM = Math.max(0.15, Math.min(2.5, Number(document.getElementById("ctrlCustomHeightM").value) || 0.45));
+  sel.customWidthM = wM;
+  sel.customHeightM = hM;
+  await refreshContainerLayerAppearance(sel);
+  const pf = perspective.autoScale ? (sel.perspFactor || getPerspectiveFactorAtY(sel.y)) : 1;
+  sel.scale = Math.max(0.015, heightMToScale(hM, pf));
+  syncInspectorValues();
+  draw();
+}
+document.getElementById("ctrlCustomWidthM").addEventListener("change", applyCustomContainerDims);
+document.getElementById("ctrlCustomHeightM").addEventListener("change", applyCustomContainerDims);
 
 document.getElementById("ctrlContainerMaterial").addEventListener("change", async (e) => {
   const sel = getSelectedLayer();
@@ -2015,6 +2137,7 @@ document.getElementById("btnFlip").addEventListener("click", () => {
 document.getElementById("btnDuplicate").addEventListener("click", () => {
   const sel = getSelectedLayer();
   if (!sel) return;
+  pushUndoSnapshot();
   const copy = {
     ...sel,
     uid: "layer_" + (nextUid++),
@@ -2689,6 +2812,8 @@ document.getElementById("btnResetDemo").addEventListener("click", () => {
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
+  await preloadContainerTextures();
+  hydrateBuiltinContainers();
   renderCatalog();
   await loadDemoScene();
 });

@@ -1,73 +1,95 @@
 /**
- * Procedural 3D-projected container, planter & ground-soil renderer.
- * Supports 360-degree horizontal yaw, vertical camera pitch, scene perspective foreshortening,
- * and multiple materials/colors.
+ * Procedural 3D-projected container, planter & ground-soil renderer
+ * with real photographic texture mapping (affine triangle UV mapping),
+ * custom Width x Height proportions, 360-deg horizontal yaw, vertical camera pitch,
+ * and scene perspective Z-foreshortening.
  */
 
 export const CONTAINER_MATERIALS = {
   cemento: {
     label: "Cemento",
+    texSrc: "assets/textures/cemento.jpg",
     colors: [
-      { id: "gris_claro", label: "Gris claro", base: "#9ca3af", dark: "#6b7280", light: "#d1d5db", texture: "concrete" },
-      { id: "antracita", label: "Antracita", base: "#4b5563", dark: "#27272a", light: "#71717a", texture: "concrete" },
-      { id: "arena", label: "Arena", base: "#c8bca8", dark: "#968974", light: "#e2d8c8", texture: "concrete" }
+      { id: "gris_claro", label: "Gris claro", base: "#9ca3af", tint: null },
+      { id: "antracita", label: "Antracita", base: "#4b5563", tint: "rgba(24,24,27,0.48)" },
+      { id: "arena", label: "Arena", base: "#c8bca8", tint: "rgba(214,195,160,0.42)" }
     ]
   },
   terracota: {
     label: "Terracota",
+    texSrc: "assets/textures/terracota.jpg",
     colors: [
-      { id: "barro", label: "Barro clásico", base: "#b85d3b", dark: "#7c371f", light: "#d97b59", texture: "terracotta" },
-      { id: "terracota_claro", label: "Terracota claro", base: "#d07d57", dark: "#9a4f30", light: "#e59c7b", texture: "terracotta" }
+      { id: "barro", label: "Barro clásico", base: "#b85d3b", tint: null },
+      { id: "terracota_claro", label: "Terracota claro", base: "#d07d57", tint: "rgba(240,180,145,0.28)" }
     ]
   },
   madera: {
     label: "Madera",
+    texSrc: "assets/textures/madera.jpg",
     colors: [
-      { id: "lapacho", label: "Deck Lapacho", base: "#7c4a2d", dark: "#4e2c18", light: "#a36843", texture: "wood" },
-      { id: "pino", label: "Pino natural", base: "#b58350", dark: "#82582e", light: "#cfa272", texture: "wood" },
-      { id: "gris_envejecido", label: "Gris envejecido", base: "#6e6a61", dark: "#47443e", light: "#918c81", texture: "wood" }
+      { id: "lapacho", label: "Deck Lapacho", base: "#7c4a2d", tint: null },
+      { id: "pino", label: "Pino natural", base: "#b58350", tint: "rgba(215,165,105,0.38)" },
+      { id: "gris_envejecido", label: "Gris envejecido", base: "#6e6a61", tint: "rgba(130,130,130,0.48)" }
     ]
   },
   corten: {
     label: "Corten",
+    texSrc: "assets/textures/corten.jpg",
     colors: [
-      { id: "corten_oxido", label: "Chapa Corten", base: "#8e3e1e", dark: "#56220e", light: "#b9592f", texture: "corten" }
+      { id: "corten_oxido", label: "Chapa Corten", base: "#8e3e1e", tint: null }
     ]
   },
   plastico: {
     label: "Plástico",
+    texSrc: "assets/textures/plastico.jpg",
     colors: [
-      { id: "plastico_negro", label: "Negro mate", base: "#27272a", dark: "#141417", light: "#45454c", texture: "plastic" },
-      { id: "plastico_blanco", label: "Blanco", base: "#e4e4e7", dark: "#a1a1aa", light: "#fafafa", texture: "plastic" },
-      { id: "plastico_gris", label: "Gris grafito", base: "#52525b", dark: "#303036", light: "#71717a", texture: "plastic" },
-      { id: "plastico_verde", label: "Verde musgo", base: "#3f5944", dark: "#273a2b", light: "#5a7c60", texture: "plastic" },
-      { id: "plastico_terracota", label: "Terracota", base: "#b55239", dark: "#803421", light: "#cf6f57", texture: "plastic" }
+      { id: "plastico_negro", label: "Negro mate", base: "#27272a", tint: null },
+      { id: "plastico_blanco", label: "Blanco", base: "#e4e4e7", tint: "rgba(244,244,245,0.78)" },
+      { id: "plastico_gris", label: "Gris grafito", base: "#52525b", tint: "rgba(113,113,122,0.45)" },
+      { id: "plastico_verde", label: "Verde musgo", base: "#3f5944", tint: "rgba(63,89,68,0.68)" },
+      { id: "plastico_terracota", label: "Terracota", base: "#b55239", tint: "rgba(181,82,57,0.68)" }
     ]
   },
   hierro_negro: {
     label: "Hierro negro",
+    texSrc: "assets/textures/hierro_negro.jpg",
     colors: [
-      { id: "hierro_satin", label: "Negro satinado", base: "#1d1d20", dark: "#0c0c0e", light: "#3b3b42", texture: "iron" },
-      { id: "hierro_grafito", label: "Grafito oscuro", base: "#2d2f36", dark: "#16171b", light: "#4b4e59", texture: "iron" }
+      { id: "hierro_satin", label: "Negro satinado", base: "#1d1d20", tint: null },
+      { id: "hierro_grafito", label: "Grafito oscuro", base: "#2d2f36", tint: "rgba(75,85,99,0.28)" }
     ]
   },
   negro_oxidado: {
     label: "Negro oxidado",
+    texSrc: "assets/textures/negro_oxidado.jpg",
     colors: [
-      { id: "negro_oxido", label: "Negro c/ óxido", base: "#201b19", dark: "#100d0c", light: "#46352c", rust: "#8a3e1b", texture: "oxidized_iron" }
+      { id: "negro_oxido", label: "Negro c/ óxido", base: "#201b19", tint: null }
     ]
   }
 };
 
+const TEXTURE_URLS = {
+  ...Object.fromEntries(Object.entries(CONTAINER_MATERIALS).map(([k, v]) => [k, v.texSrc])),
+  tierra: "assets/textures/tierra.jpg"
+};
+
+const texCache = new Map();
 const renderCache = new Map();
 
-function seededRand(seed) {
-  let s = seed % 2147483647;
-  if (s <= 0) s += 2147483646;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
+export async function preloadContainerTextures() {
+  const entries = Object.entries(TEXTURE_URLS);
+  await Promise.all(
+    entries.map(([key, url]) => new Promise((resolve) => {
+      if (texCache.has(key)) return resolve();
+      const img = new Image();
+      img.onload = () => {
+        texCache.set(key, img);
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = url;
+    }))
+  );
+  renderCache.clear();
 }
 
 function getColorSpec(materialId, colorId) {
@@ -75,115 +97,67 @@ function getColorSpec(materialId, colorId) {
   return mat.colors.find(c => c.id === colorId) || mat.colors[0];
 }
 
-function paintMaterialTexture(ctx, poly, colorSpec, shadeFactor, seed = 101) {
+// Affine texture mapping for a single triangle (p0,p1,p2) -> UV (u0,v0),(u1,v1),(u2,v2)
+function drawTexturedTriangle(ctx, img, p0, p1, p2, u0, v0, u1, v1, u2, v2) {
   ctx.save();
   ctx.beginPath();
-  poly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+  ctx.moveTo(p0[0], p0[1]);
+  ctx.lineTo(p1[0], p1[1]);
+  ctx.lineTo(p2[0], p2[1]);
   ctx.closePath();
   ctx.clip();
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const [x, y] of poly) {
-    if (x < minX) minX = x;
-    if (y < minY) minY = y;
-    if (x > maxX) maxX = x;
-    if (y > maxY) maxY = y;
+  const denom = u0 * (v1 - v2) - v0 * (u1 - u2) + (u1 * v2 - u2 * v1);
+  if (Math.abs(denom) > 1e-6) {
+    const a = (p0[0] * (v1 - v2) - v0 * (p1[0] - p2[0]) + (p1[0] * v2 - p2[0] * v1)) / denom;
+    const b = (p0[1] * (v1 - v2) - v0 * (p1[1] - p2[1]) + (p1[1] * v2 - p2[1] * v1)) / denom;
+    const c = (u0 * (p1[0] - p2[0]) - p0[0] * (u1 - u2) + (u1 * p2[0] - u2 * p1[0])) / denom;
+    const d = (u0 * (p1[1] - p2[1]) - p0[1] * (u1 - u2) + (u1 * p2[1] - u2 * p1[1])) / denom;
+    const e = (u0 * (v1 * p2[0] - v2 * p1[0]) - v0 * (u1 * p2[0] - u2 * p1[0]) + p0[0] * (u1 * v2 - u2 * v1)) / denom;
+    const f = (u0 * (v1 * p2[1] - v2 * p1[1]) - v0 * (u1 * p2[1] - u2 * p1[1]) + p0[1] * (u1 * v2 - u2 * v1)) / denom;
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(img, 0, 0);
   }
-  const w = Math.max(1, maxX - minX);
-  const h = Math.max(1, maxY - minY);
-
-  const grad = ctx.createLinearGradient(minX, minY, maxX, maxY);
-  if (shadeFactor >= 0.85) {
-    grad.addColorStop(0, colorSpec.light);
-    grad.addColorStop(0.55, colorSpec.base);
-    grad.addColorStop(1, colorSpec.dark);
-  } else {
-    grad.addColorStop(0, colorSpec.base);
-    grad.addColorStop(1, colorSpec.dark);
-  }
-  ctx.fillStyle = grad;
-  ctx.fillRect(minX, minY, w, h);
-
-  if (shadeFactor < 1) {
-    ctx.fillStyle = `rgba(0, 0, 0, ${(1 - shadeFactor) * 0.52})`;
-    ctx.fillRect(minX, minY, w, h);
-  }
-
-  const rand = seededRand(seed);
-
-  if (colorSpec.texture === "wood") {
-    const planks = 4;
-    ctx.strokeStyle = "rgba(25, 12, 5, 0.38)";
-    ctx.lineWidth = 2;
-    for (let i = 1; i < planks; i++) {
-      const py = minY + (h * i) / planks;
-      ctx.beginPath();
-      ctx.moveTo(minX, py);
-      ctx.lineTo(maxX, py);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = "rgba(255, 230, 200, 0.08)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 24; i++) {
-      const py = minY + rand() * h;
-      ctx.beginPath();
-      ctx.moveTo(minX, py);
-      ctx.lineTo(maxX, py + (rand() - 0.5) * 3);
-      ctx.stroke();
-    }
-  } else if (colorSpec.texture === "corten") {
-    for (let i = 0; i < 38; i++) {
-      const rx = minX + rand() * w;
-      const ry = minY + rand() * h;
-      const rr = 8 + rand() * 28;
-      ctx.fillStyle = rand() > 0.45 ? "rgba(185, 85, 35, 0.18)" : "rgba(65, 22, 8, 0.22)";
-      ctx.beginPath();
-      ctx.ellipse(rx, ry, rr, rr * 0.55, rand() * Math.PI, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (colorSpec.texture === "oxidized_iron") {
-    for (let i = 0; i < 34; i++) {
-      const rx = minX + rand() * w;
-      const ry = minY + rand() * h;
-      const rr = 6 + rand() * 24;
-      ctx.fillStyle = rand() > 0.35 ? "rgba(148, 66, 26, 0.26)" : "rgba(96, 40, 16, 0.22)";
-      ctx.beginPath();
-      ctx.ellipse(rx, ry, rr, rr * 0.6, rand() * Math.PI, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.strokeStyle = "rgba(165, 76, 32, 0.35)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(minX + 1, minY + 1, w - 2, h - 2);
-  } else if (colorSpec.texture === "iron") {
-    const spec = ctx.createLinearGradient(minX, minY, maxX, minY);
-    spec.addColorStop(0, "rgba(255,255,255,0)");
-    spec.addColorStop(0.35, "rgba(255,255,255,0.08)");
-    spec.addColorStop(0.6, "rgba(255,255,255,0)");
-    ctx.fillStyle = spec;
-    ctx.fillRect(minX, minY, w, h);
-  } else if (colorSpec.texture === "concrete" || colorSpec.texture === "terracotta") {
-    for (let i = 0; i < 45; i++) {
-      const rx = minX + rand() * w;
-      const ry = minY + rand() * h;
-      const rr = 1 + rand() * 3.5;
-      ctx.fillStyle = rand() > 0.5 ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.09)";
-      ctx.beginPath();
-      ctx.arc(rx, ry, rr, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (colorSpec.texture === "plastic") {
-    const spec = ctx.createLinearGradient(minX, minY, maxX, minY);
-    spec.addColorStop(0, "rgba(255,255,255,0.02)");
-    spec.addColorStop(0.28, "rgba(255,255,255,0.14)");
-    spec.addColorStop(0.65, "rgba(255,255,255,0)");
-    ctx.fillStyle = spec;
-    ctx.fillRect(minX, minY, w, h);
-  }
-
   ctx.restore();
 }
 
-function paintSoilTexture(ctx, poly, mulch = false, seed = 77) {
+function paintTexturedQuad(ctx, poly, materialId, colorSpec, shadeFactor) {
+  const tex = texCache.get(materialId);
+  if (tex && tex.complete && tex.naturalWidth > 0) {
+    const tw = tex.naturalWidth;
+    const th = tex.naturalHeight;
+    // Slight bleed by expanding triangle pairs cleanly
+    drawTexturedTriangle(ctx, tex, poly[0], poly[1], poly[2], 0, 0, tw, 0, tw, th);
+    drawTexturedTriangle(ctx, tex, poly[0], poly[2], poly[3], 0, 0, tw, th, 0, th);
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    poly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    ctx.closePath();
+    ctx.fillStyle = colorSpec.base;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  poly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+  ctx.closePath();
+  ctx.clip();
+
+  if (colorSpec.tint) {
+    ctx.fillStyle = colorSpec.tint;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+  if (shadeFactor < 1) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${(1 - shadeFactor) * 0.62})`;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+  ctx.restore();
+}
+
+function paintSoilPoly(ctx, poly, mulch = false) {
+  const tex = texCache.get("tierra");
   ctx.save();
   ctx.beginPath();
   poly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
@@ -197,33 +171,15 @@ function paintSoilTexture(ctx, poly, mulch = false, seed = 77) {
     if (x > maxX) maxX = x;
     if (y > maxY) maxY = y;
   }
-  const w = Math.max(1, maxX - minX);
-  const h = Math.max(1, maxY - minY);
-
-  const grad = ctx.createRadialGradient(minX + w * 0.5, minY + h * 0.5, 4, minX + w * 0.5, minY + h * 0.5, Math.max(w, h) * 0.6);
-  grad.addColorStop(0, mulch ? "#5c3b24" : "#3a291e");
-  grad.addColorStop(1, mulch ? "#3b2314" : "#221710");
-  ctx.fillStyle = grad;
-  ctx.fillRect(minX, minY, w, h);
-
-  const rand = seededRand(seed);
-  for (let i = 0; i < 95; i++) {
-    const rx = minX + rand() * w;
-    const ry = minY + rand() * h;
+  if (tex && tex.complete && tex.naturalWidth > 0) {
+    ctx.drawImage(tex, minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
     if (mulch) {
-      ctx.save();
-      ctx.translate(rx, ry);
-      ctx.rotate(rand() * Math.PI);
-      ctx.fillStyle = rand() > 0.45 ? "#7a4d2e" : "#4a2c18";
-      ctx.fillRect(-5, -1.8, 10 + rand() * 6, 3.5);
-      ctx.restore();
-    } else {
-      const rr = 1.5 + rand() * 4;
-      ctx.fillStyle = rand() > 0.5 ? "#4a3628" : "#1a110b";
-      ctx.beginPath();
-      ctx.arc(rx, ry, rr, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = "rgba(120, 62, 24, 0.32)";
+      ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
     }
+  } else {
+    ctx.fillStyle = mulch ? "#4e301b" : "#2c1e15";
+    ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
   }
   ctx.restore();
 }
@@ -239,28 +195,24 @@ function projectBox(W, H, D, yawDeg, pitchDeg, perspStrength, cw, ch) {
 
   const hw = W / 2, hd = D / 2;
   const rawPts = [
-    [-hw, 0, -hd], // 0: back-left bottom
-    [ hw, 0, -hd], // 1: back-right bottom
-    [ hw, 0,  hd], // 2: front-right bottom
-    [-hw, 0,  hd], // 3: front-left bottom
-    [-hw, H, -hd], // 4: back-left top
-    [ hw, H, -hd], // 5: back-right top
-    [ hw, H,  hd], // 6: front-right top
-    [-hw, H,  hd]  // 7: front-left top
+    [-hw, 0, -hd],
+    [ hw, 0, -hd],
+    [ hw, 0,  hd],
+    [-hw, 0,  hd],
+    [-hw, H, -hd],
+    [ hw, H, -hd],
+    [ hw, H,  hd],
+    [-hw, H,  hd]
   ];
 
   const proj = rawPts.map(([x, y, z]) => {
     const rx = x * cosY - z * sinY;
     const rz0 = x * sinY + z * cosY;
-    // Vertical camera pitch rotation around X
     const ry1 = y * cosP - rz0 * sinP;
     const rz1 = y * sinP + rz0 * cosP;
-    // True perspective foreshortening in Z (+rz1 is closer to camera)
     const denom = Math.max(0.35, 1 - rz1 * perspStrength);
     const persp = 1 / denom;
-    const sx = rx * persp;
-    const sy = -ry1 * persp;
-    return [sx, sy, rz1];
+    return [rx * persp, -ry1 * persp, rz1];
   });
 
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -270,7 +222,7 @@ function projectBox(W, H, D, yawDeg, pitchDeg, perspStrength, cw, ch) {
     if (sy < minY) minY = sy;
     if (sy > maxY) maxY = sy;
   }
-  const pad = 16;
+  const pad = 12;
   const scale = Math.min((cw - pad * 2) / Math.max(1, maxX - minX), (ch - pad * 2) / Math.max(1, maxY - minY));
   const cx = cw / 2 - ((minX + maxX) / 2) * scale;
   const cy = ch / 2 - ((minY + maxY) / 2) * scale;
@@ -278,28 +230,35 @@ function projectBox(W, H, D, yawDeg, pitchDeg, perspStrength, cw, ch) {
   return proj.map(([sx, sy, rz]) => [cx + sx * scale, cy + sy * scale, rz]);
 }
 
-function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspStrength, isGroundSoil = false, mulch = false, isEmpty = false) {
-  const cw = 520;
-  const ch = shape === "cantero_rect" ? 340 : shape === "jardinera_alta" ? 420 : shape === "tierra_cantero" ? 260 : 420;
+function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspStrength, isGroundSoil, mulch, isEmpty, customWidthM, customHeightM) {
+  let W = 240, H = 120, D = 110;
+  if (shape === "cantero_rect") { W = 320; H = 105; D = 125; }
+  else if (shape === "maceta_cubo") { W = 175; H = 175; D = 175; }
+  else if (shape === "jardinera_alta") { W = 230; H = 195; D = 95; }
+  else if (shape === "tierra_cantero") { W = 330; H = 36; D = 150; }
+
+  if (customWidthM && customHeightM && customHeightM > 0) {
+    const aspect = Math.max(0.35, Math.min(4.5, customWidthM / customHeightM));
+    H = 130;
+    W = Math.round(H * aspect);
+    D = Math.round(Math.min(180, Math.max(70, W * 0.42)));
+  }
+
+  const cw = Math.max(380, Math.min(720, Math.round(W * 1.45)));
+  const ch = Math.max(240, Math.min(540, Math.round(H * 2.3 + 90)));
   const canvas = document.createElement("canvas");
   canvas.width = cw;
   canvas.height = ch;
   const ctx = canvas.getContext("2d");
-
-  let W = 240, H = 120, D = 110;
-  if (shape === "cantero_rect") { W = 330; H = 105; D = 130; }
-  else if (shape === "maceta_cubo") { W = 175; H = 175; D = 175; }
-  else if (shape === "jardinera_alta") { W = 230; H = 195; D = 95; }
-  else if (shape === "tierra_cantero") { W = 330; H = 36; D = 150; }
 
   const pts = projectBox(W, H, D, yawDeg, pitchDeg, perspStrength, cw, ch);
   const colorSpec = getColorSpec(materialId, colorId);
 
   const faces = [
     { id: "front", idx: [3, 2, 6, 7], shade: 0.96 },
-    { id: "right", idx: [2, 1, 5, 6], shade: 0.72 },
-    { id: "back",  idx: [1, 0, 4, 5], shade: 0.62 },
-    { id: "left",  idx: [0, 3, 7, 4], shade: 0.78 }
+    { id: "right", idx: [2, 1, 5, 6], shade: 0.68 },
+    { id: "back",  idx: [1, 0, 4, 5], shade: 0.58 },
+    { id: "left",  idx: [0, 3, 7, 4], shade: 0.74 }
   ];
 
   const visibleFaces = [];
@@ -312,26 +271,26 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
       area += x1 * y2 - x2 * y1;
     }
     const avgZ = f.idx.reduce((acc, i) => acc + pts[i][2], 0) / 4;
-    if (area < 0) {
-      visibleFaces.push({ ...f, poly, avgZ });
-    }
+    if (area < 0) visibleFaces.push({ ...f, poly, avgZ });
   }
   visibleFaces.sort((a, b) => a.avgZ - b.avgZ);
 
   for (const f of visibleFaces) {
-    paintMaterialTexture(ctx, f.poly.map(([x, y]) => [x, y]), colorSpec, f.shade, f.id.charCodeAt(0) * 19);
-    ctx.strokeStyle = "rgba(0,0,0,0.28)";
+    // Pass top-left, top-right, bot-right, bot-left order for clean UV
+    const uvPoly = [pts[f.idx[3]], pts[f.idx[2]], pts[f.idx[1]], pts[f.idx[0]]].map(([x, y]) => [x, y]);
+    paintTexturedQuad(ctx, uvPoly, materialId, colorSpec, f.shade);
+    ctx.strokeStyle = "rgba(0,0,0,0.32)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    f.poly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    uvPoly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
     ctx.closePath();
     ctx.stroke();
   }
 
   const topPoly = [pts[4], pts[5], pts[6], pts[7]].map(([x, y]) => [x, y]);
-  paintMaterialTexture(ctx, topPoly, colorSpec, 1.0, 303);
+  paintTexturedQuad(ctx, topPoly, materialId, colorSpec, 1.0);
 
-  const inset = isGroundSoil ? 0.06 : 0.11;
+  const inset = isGroundSoil ? 0.06 : 0.10;
   const cxTop = topPoly.reduce((s, p) => s + p[0], 0) / 4;
   const cyTop = topPoly.reduce((s, p) => s + p[1], 0) / 4;
   const innerPoly = topPoly.map(([x, y]) => [
@@ -340,13 +299,12 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
   ]);
 
   if (isEmpty && !isGroundSoil) {
-    // 0 L empty container interior
-    paintMaterialTexture(ctx, innerPoly, colorSpec, 0.45, 505);
+    paintTexturedQuad(ctx, innerPoly, materialId, colorSpec, 0.42);
   } else {
-    paintSoilTexture(ctx, innerPoly, mulch, 91);
+    paintSoilPoly(ctx, innerPoly, mulch);
   }
 
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   topPoly.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
@@ -356,7 +314,7 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
   return canvas.toDataURL("image/png");
 }
 
-function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty = false) {
+function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty, customWidthM, customHeightM) {
   const cw = 420;
   const ch = 460;
   const canvas = document.createElement("canvas");
@@ -364,15 +322,17 @@ function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty 
   canvas.height = ch;
   const ctx = canvas.getContext("2d");
   const colorSpec = getColorSpec(materialId, colorId);
+  const tex = texCache.get(materialId);
 
   const pitchFactor = Math.sin((Math.max(6, Math.min(68, pitchDeg)) * Math.PI) / 180);
+  const aspect = customWidthM && customHeightM ? Math.max(0.5, Math.min(2.2, customWidthM / customHeightM)) : 1;
   const cx = cw / 2;
-  const topRx = 150;
-  const topRy = Math.max(14, Math.round(105 * pitchFactor));
-  const botRx = 120;
-  const botRy = Math.max(10, Math.round(82 * pitchFactor));
+  const topRx = Math.round(130 * Math.min(1.4, aspect));
+  const topRy = Math.max(14, Math.round(92 * pitchFactor));
+  const botRx = Math.round(topRx * 0.8);
+  const botRy = Math.max(10, Math.round(72 * pitchFactor));
   const topY = 26 + topRy;
-  const botY = Math.min(ch - 20 - botRy, topY + Math.round(320 * Math.cos((pitchDeg * Math.PI) / 220)));
+  const botY = Math.min(ch - 20 - botRy, topY + Math.round(310 * Math.cos((pitchDeg * Math.PI) / 220)));
 
   ctx.save();
   ctx.beginPath();
@@ -384,58 +344,61 @@ function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty 
   ctx.closePath();
   ctx.clip();
 
-  const rad = (yawDeg * Math.PI) / 180;
-  const lightShift = Math.sin(rad) * 0.25;
-  const grad = ctx.createLinearGradient(cx - topRx, topY, cx + topRx, topY);
-  grad.addColorStop(0, colorSpec.dark);
-  grad.addColorStop(Math.max(0.15, Math.min(0.85, 0.35 + lightShift)), colorSpec.light);
-  grad.addColorStop(0.75, colorSpec.base);
-  grad.addColorStop(1, colorSpec.dark);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, cw, ch);
+  if (tex && tex.complete && tex.naturalWidth > 0) {
+    ctx.drawImage(tex, cx - topRx, topY, topRx * 2, botY - topY + botRy);
+  } else {
+    ctx.fillStyle = colorSpec.base;
+    ctx.fillRect(0, 0, cw, ch);
+  }
 
-  const rand = seededRand(404 + Math.round(yawDeg / 15));
-  if (colorSpec.texture === "oxidized_iron" || colorSpec.texture === "corten") {
-    for (let i = 0; i < 32; i++) {
-      const rx = cx - topRx + rand() * topRx * 2;
-      const ry = topY + rand() * Math.max(20, botY - topY);
-      const rr = 8 + rand() * 22;
-      ctx.fillStyle = rand() > 0.4 ? "rgba(155, 68, 25, 0.24)" : "rgba(45, 18, 8, 0.2)";
-      ctx.beginPath();
-      ctx.ellipse(rx, ry, rr, rr * 0.55, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (colorSpec.texture === "concrete" || colorSpec.texture === "terracotta") {
-    for (let i = 0; i < 40; i++) {
-      const rx = cx - topRx + rand() * topRx * 2;
-      const ry = topY + rand() * Math.max(20, botY - topY);
-      ctx.fillStyle = rand() > 0.5 ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
-      ctx.beginPath();
-      ctx.arc(rx, ry, 1.5 + rand() * 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  if (colorSpec.tint) {
+    ctx.fillStyle = colorSpec.tint;
+    ctx.fillRect(0, 0, cw, ch);
+  }
+
+  // Cylindrical 3D shading overlay
+  const rad = (yawDeg * Math.PI) / 180;
+  const lightPos = Math.max(0.18, Math.min(0.82, 0.35 + Math.sin(rad) * 0.25));
+  const shade = ctx.createLinearGradient(cx - topRx, topY, cx + topRx, topY);
+  shade.addColorStop(0, "rgba(0,0,0,0.48)");
+  shade.addColorStop(lightPos, "rgba(255,255,255,0.12)");
+  shade.addColorStop(1, "rgba(0,0,0,0.52)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
+
+  // Top rim
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, topY, topRx, topRy, 0, 0, Math.PI * 2);
+  ctx.clip();
+  if (tex && tex.complete && tex.naturalWidth > 0) {
+    ctx.drawImage(tex, cx - topRx, topY - topRy, topRx * 2, topRy * 2);
+  } else {
+    ctx.fillStyle = colorSpec.base;
+    ctx.fill();
+  }
+  if (colorSpec.tint) {
+    ctx.fillStyle = colorSpec.tint;
+    ctx.fill();
   }
   ctx.restore();
 
-  ctx.save();
-  ctx.fillStyle = colorSpec.light;
-  ctx.strokeStyle = "rgba(0,0,0,0.28)";
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.ellipse(cx, topY, topRx, topRy, 0, 0, Math.PI * 2);
-  ctx.fill();
   ctx.stroke();
-  ctx.restore();
 
   const innerPts = [];
   for (let i = 0; i < 24; i++) {
     const a = (i / 24) * Math.PI * 2;
-    innerPts.push([cx + Math.cos(a) * (topRx - 16), topY + 2 + Math.sin(a) * Math.max(5, topRy - 7)]);
+    innerPts.push([cx + Math.cos(a) * (topRx - 15), topY + 2 + Math.sin(a) * Math.max(5, topRy - 7)]);
   }
   if (isEmpty) {
-    paintMaterialTexture(ctx, innerPts, colorSpec, 0.45, 505);
+    paintTexturedQuad(ctx, [innerPts[0], innerPts[6], innerPts[12], innerPts[18]], materialId, colorSpec, 0.45);
   } else {
-    paintSoilTexture(ctx, innerPts, false, 88);
+    paintSoilPoly(ctx, innerPts, false);
   }
 
   return canvas.toDataURL("image/png");
@@ -451,19 +414,18 @@ function renderOrganicSoilBed(mulch = false, pitchDeg = 22) {
 
   const pitchScale = Math.max(0.45, Math.min(1.25, pitchDeg / 22));
   const pts = [];
-  const rand = seededRand(mulch ? 512 : 256);
   const steps = 36;
   for (let i = 0; i < steps; i++) {
     const a = (i / steps) * Math.PI * 2;
-    const wobble = 0.88 + rand() * 0.22;
+    const wobble = 0.9 + Math.sin(i * 2.3) * 0.08;
     pts.push([
       cw / 2 + Math.cos(a) * 215 * wobble,
       ch / 2 + 8 + Math.sin(a) * 64 * pitchScale * wobble
     ]);
   }
-  paintSoilTexture(ctx, pts, mulch, mulch ? 777 : 333);
+  paintSoilPoly(ctx, pts, mulch);
 
-  ctx.strokeStyle = "rgba(20, 12, 6, 0.35)";
+  ctx.strokeStyle = "rgba(20, 12, 6, 0.45)";
   ctx.lineWidth = 3;
   ctx.beginPath();
   pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
@@ -482,22 +444,27 @@ export function getContainerRenderSrc({
   perspStrength = 0.0011,
   isGroundSoil = false,
   mulch = false,
-  liters = 45
+  liters = 45,
+  customWidthM = null,
+  customHeightM = null
 }) {
   const normYaw = ((Math.round(viewAngle) % 360) + 360) % 360;
   const normPitch = Math.max(5, Math.min(68, Math.round(viewPitch)));
   const pBucket = Math.round(perspStrength * 10000);
   const isEmpty = !isGroundSoil && liters <= 0;
-  const key = `${shape}|${material}|${colorId}|${normYaw}|${normPitch}|${pBucket}|${isGroundSoil ? 1 : 0}|${mulch ? 1 : 0}|${isEmpty ? 1 : 0}`;
+  const wKey = customWidthM ? customWidthM.toFixed(2) : "d";
+  const hKey = customHeightM ? customHeightM.toFixed(2) : "d";
+  const texReady = texCache.size > 0 ? 1 : 0;
+  const key = `${texReady}|${shape}|${material}|${colorId}|${normYaw}|${normPitch}|${pBucket}|${isGroundSoil ? 1 : 0}|${mulch ? 1 : 0}|${isEmpty ? 1 : 0}|${wKey}|${hKey}`;
   if (renderCache.has(key)) return renderCache.get(key);
 
   let dataUrl;
   if (shape === "tierra_organica") {
     dataUrl = renderOrganicSoilBed(mulch, normPitch);
   } else if (shape === "maceta_cilindro") {
-    dataUrl = renderCylinderContainer(material, colorId, normYaw, normPitch, isEmpty);
+    dataUrl = renderCylinderContainer(material, colorId, normYaw, normPitch, isEmpty, customWidthM, customHeightM);
   } else {
-    dataUrl = renderBoxContainer(shape, material, colorId, normYaw, normPitch, perspStrength, isGroundSoil, mulch, isEmpty);
+    dataUrl = renderBoxContainer(shape, material, colorId, normYaw, normPitch, perspStrength, isGroundSoil, mulch, isEmpty, customWidthM, customHeightM);
   }
   renderCache.set(key, dataUrl);
   return dataUrl;

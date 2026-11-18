@@ -38,6 +38,11 @@
         <span>Nueva planta</span>
       </button>
 
+            <button id="btnUndo" type="button" disabled class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Deshacer última acción (Ctrl+Z)">
+        <svg class="w-3.5 h-3.5 text-zinc-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4"/></svg>
+        <span>Deshacer</span>
+      </button>
+
       <button id="btnCalibrate" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Marcar una referencia real de 2 puntos en la foto">
         <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 10v4m4-4v3m4-3v4m4-4v3M3 6h18v12H3z"/></svg>
         <span>Calibrar escala</span>
@@ -179,9 +184,15 @@
         <div id="inspectorControls" class="hidden space-y-3">
           <!-- Real-world Size & Botanical Realism Box -->
           <div id="botanicalBox" class="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800 space-y-2">
-            <div class="flex items-center justify-between text-xs">
-              <span class="text-zinc-400">Altura real estimada</span>
-              <span id="valRealHeight" class="font-semibold text-zinc-100">1.80 m</span>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="bg-zinc-900/80 rounded px-2 py-1 border border-zinc-800/80 flex justify-between">
+                <span class="text-zinc-400">Alto</span>
+                <span id="valRealHeight" class="font-semibold text-zinc-100">1.80 m</span>
+              </div>
+              <div class="bg-zinc-900/80 rounded px-2 py-1 border border-zinc-800/80 flex justify-between">
+                <span class="text-zinc-400">Ancho</span>
+                <span id="valRealWidth" class="font-semibold text-zinc-100">1.10 m</span>
+              </div>
             </div>
             <div id="plantBotanicalDetails" class="space-y-2">
               <div class="flex items-center justify-between text-[11px]">
@@ -205,6 +216,17 @@
             </div>
 
             <div id="containerDetails" class="hidden space-y-2.5">
+              <div id="customContainerDimsWrap" class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] text-zinc-400 mb-0.5">Ancho (m)</label>
+                  <input id="ctrlCustomWidthM" type="number" step="0.05" min="0.2" max="5.0" value="1.20" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-100" />
+                </div>
+                <div>
+                  <label class="block text-[10px] text-zinc-400 mb-0.5">Alto (m)</label>
+                  <input id="ctrlCustomHeightM" type="number" step="0.05" min="0.15" max="2.5" value="0.45" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-100" />
+                </div>
+              </div>
+
               <div id="potLitersWrap" class="space-y-1.5">
                 <div>
                   <div class="flex justify-between text-[11px] mb-1">
