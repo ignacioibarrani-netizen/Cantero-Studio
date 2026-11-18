@@ -1,1 +1,348 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cantero Studio — Simulador de Paisajismo 2D</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col select-none">
 
+  <!-- Top Toolbar -->
+  <header class="bg-zinc-900 border-b border-zinc-800 px-3 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 z-20">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8m0 0C12 8.5 16 5 20 5c0 4.5-3.5 8-8 8zm0 0C12 9.5 8 6 4 6c0 4.5 3.5 7 8 7z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold tracking-tight text-zinc-100 leading-none">Cantero Studio</h1>
+        <p class="text-[11px] text-zinc-400 mt-0.5">Simulador 2D con escala real y perspectiva</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <label class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition">
+        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        <span>Subir foto</span>
+        <input id="bgUploadInput" type="file" accept="image/*" class="hidden" />
+      </label>
+
+      <label class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition">
+        <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        <span>Subir PNG</span>
+        <input id="plantUploadInput" type="file" accept="image/*" class="hidden" />
+      </label>
+
+      <button id="btnCalibrate" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Marcar una referencia real de 2 puntos en la foto">
+        <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 10v4m4-4v3m4-3v4m4-4v3M3 6h18v12H3z"/></svg>
+        <span>Calibrar escala</span>
+      </button>
+
+      <button id="btnPerspective" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Configurar malla de perspectiva en el suelo">
+        <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20L8 4h8l4 16H4zm2.5-8h11M12 4v16"/></svg>
+        <span>Malla perspectiva</span>
+      </button>
+
+      <button id="btnCompare" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 border border-zinc-700 transition" title="Ver foto original sin plantas">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+        <span id="compareLabel">Antes / Después</span>
+      </button>
+
+      <button id="btnResetDemo" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 border border-zinc-700 transition">
+        <span>Demo</span>
+      </button>
+
+      <button id="btnExport" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white shadow-sm transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"/></svg>
+        <span>Exportar PNG</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+    <!-- Left Panel: Plant & Container Catalog -->
+    <aside class="w-full lg:w-72 bg-zinc-900/90 border-b lg:border-b-0 lg:border-r border-zinc-800 flex flex-col shrink-0 max-h-[38vh] lg:max-h-none">
+      <div class="p-3 border-b border-zinc-800">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Catálogo Botánico</h2>
+          <span id="catalogCount" class="text-[11px] text-zinc-500">0 ítems</span>
+        </div>
+        <div class="grid grid-cols-5 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+          <button type="button" data-filter="all" class="filter-btn px-1 py-1 rounded text-[10px] font-medium bg-emerald-600 text-white">Todo</button>
+          <button type="button" data-filter="cerco" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Cerco</button>
+          <button type="button" data-filter="primera" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">1ª Fila</button>
+          <button type="button" data-filter="macetas" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Macetas</button>
+          <button type="button" data-filter="custom" class="filter-btn px-1 py-1 rounded text-[10px] font-medium text-zinc-400 hover:text-zinc-200">Mías</button>
+        </div>
+      </div>
+
+      <div id="catalogGrid" class="p-2.5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 overflow-y-auto flex-1">
+        <!-- Populated by JS -->
+      </div>
+    </aside>
+
+    <!-- Center Canvas Stage -->
+    <main class="flex-1 bg-zinc-950 relative flex flex-col items-center justify-center p-3 sm:p-5 overflow-hidden min-h-[340px]">
+
+      <!-- Mode Banners -->
+      <div id="maskBanner" class="hidden mb-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 z-10">
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span>Modo Máscara activo: pintá sobre la planta para ocultarla detrás de una maceta o baranda</span>
+        <button id="btnExitMask" type="button" class="ml-1 px-2 py-0.5 rounded bg-amber-500 text-zinc-950 font-semibold text-[11px] hover:bg-amber-400">Listo</button>
+      </div>
+
+      <div id="calibrateBanner" class="hidden mb-2 px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-200 text-xs flex flex-wrap items-center gap-2 z-10">
+        <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+        <span id="calibratePromptText">Hacé clic en 2 puntos de un objeto cuya medida real conozcas (ej. puerta, pared o maceta)</span>
+        <div id="calibrateInputGroup" class="hidden items-center gap-1.5">
+          <input id="calibrateMetersInput" type="number" step="0.05" min="0.05" max="30" value="1.80" class="w-20 px-2 py-0.5 rounded bg-zinc-900 border border-sky-500/50 text-zinc-100 text-xs" />
+          <span class="text-[11px]">m</span>
+          <button id="btnApplyCalibrate" type="button" class="px-2 py-0.5 rounded bg-sky-500 text-zinc-950 font-semibold text-[11px] hover:bg-sky-400">Aplicar</button>
+        </div>
+        <button id="btnCancelCalibrate" type="button" class="ml-1 px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 text-[11px] hover:bg-zinc-700">Cancelar</button>
+      </div>
+
+      <div id="perspectiveBanner" class="hidden mb-2 px-3 py-1.5 rounded-full bg-violet-500/15 border border-violet-500/40 text-violet-200 text-xs flex flex-wrap items-center gap-2 z-10">
+        <span class="w-2 h-2 rounded-full bg-violet-400"></span>
+        <span>Arrastrá las 4 esquinas de la malla sobre el suelo o cantero</span>
+        <label class="inline-flex items-center gap-1 cursor-pointer ml-1">
+          <input id="chkAutoPerspective" type="checkbox" checked class="accent-violet-500" />
+          <span>Auto-escalar plantas al mover</span>
+        </label>
+        <button id="btnExitPerspective" type="button" class="ml-1 px-2 py-0.5 rounded bg-violet-500 text-zinc-950 font-semibold text-[11px] hover:bg-violet-400">Ocultar malla</button>
+      </div>
+
+      <div id="stageWrapper" class="relative w-full h-full flex items-center justify-center">
+        <canvas id="mainCanvas" class="max-w-full max-h-[65vh] lg:max-h-[82vh] rounded-lg shadow-2xl border border-zinc-800 cursor-grab touch-none"></canvas>
+      </div>
+
+      <!-- Quick Hint & Scale Bar -->
+      <div class="mt-2.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+        <span id="scaleStatusText" class="text-sky-400/90 font-medium">Escala: 1 m ≈ 195 px</span>
+        <span>•</span>
+        <span>Clic para seleccionar</span>
+        <span>•</span>
+        <span>Esquinas para escalar</span>
+        <span>•</span>
+        <span>Rueda del mouse para tamaño</span>
+        <span>•</span>
+        <span>Supr para borrar</span>
+      </div>
+    </main>
+
+    <!-- Right Panel: Inspector & Layers -->
+    <aside class="w-full lg:w-80 bg-zinc-900/90 border-t lg:border-t-0 lg:border-l border-zinc-800 flex flex-col shrink-0 overflow-y-auto max-h-[45vh] lg:max-h-none">
+
+      <!-- Selected Item Inspector -->
+      <div class="p-3.5 border-b border-zinc-800">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Inspector</h2>
+          <span id="selectedNameBadge" class="text-[11px] font-medium text-emerald-400 truncate max-w-[160px]">Ninguna</span>
+        </div>
+
+        <div id="noSelectionState" class="py-5 text-center text-xs text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
+          Tocá una planta o maceta en la foto, o agregá una del catálogo.
+        </div>
+
+        <div id="inspectorControls" class="hidden space-y-3">
+          <!-- Real-world Size & Botanical Realism Box -->
+          <div id="botanicalBox" class="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-zinc-400">Altura real estimada</span>
+              <span id="valRealHeight" class="font-semibold text-zinc-100">1.80 m</span>
+            </div>
+            <div id="plantBotanicalDetails" class="space-y-2">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="text-zinc-400">Rango natural</span>
+                <span id="valBotanicalRange" class="text-zinc-300">1.4 – 3.0 m</span>
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Maceta / Cantero contenedor</label>
+                <select id="ctrlContainerSelect" class="w-full px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-xs text-zinc-200">
+                  <option value="">En tierra directa (sin límite)</option>
+                </select>
+              </div>
+              <label class="flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer">
+                <input id="chkRespectPotLimit" type="checkbox" checked class="accent-emerald-500" />
+                <span>Limitar tamaño máximo según maceta</span>
+              </label>
+              <div id="realismAlert" class="hidden p-2 rounded-md text-[11px] leading-snug space-y-1.5">
+                <p id="realismAlertText"></p>
+                <button id="btnFixRealism" type="button" class="px-2 py-1 rounded bg-zinc-900/90 hover:bg-zinc-800 text-[10px] font-semibold border border-current transition">Ajustar a escala realista</button>
+              </div>
+            </div>
+
+            <div id="containerDetails" class="hidden space-y-2">
+              <div>
+                <div class="flex justify-between text-[11px] mb-1">
+                  <span class="text-zinc-400">Volumen de sustrato</span>
+                  <span id="valPotLiters" class="text-zinc-200 font-medium">45 L</span>
+                </div>
+                <input id="ctrlPotLiters" type="range" min="5" max="400" step="5" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="grid grid-cols-4 gap-1.5">
+            <button id="btnFlip" type="button" class="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-medium text-zinc-200 border border-zinc-700 transition">Espejar</button>
+            <button id="btnDuplicate" type="button" class="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-medium text-zinc-200 border border-zinc-700 transition">Duplicar</button>
+            <button id="btnLayerUp" type="button" class="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-medium text-zinc-200 border border-zinc-700 transition">Adelante</button>
+            <button id="btnLayerDown" type="button" class="px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-medium text-zinc-200 border border-zinc-700 transition">Atrás</button>
+          </div>
+
+          <!-- Transform -->
+          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span class="text-zinc-400">Tamaño (escala)</span>
+                <span id="valScale" class="text-zinc-200 font-medium">100%</span>
+              </div>
+              <input id="ctrlScale" type="range" min="10" max="280" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span class="text-zinc-400">Inclinación / Rotación</span>
+                <span id="valRotate" class="text-zinc-200 font-medium">0°</span>
+              </div>
+              <input id="ctrlRotate" type="range" min="-25" max="25" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+          </div>
+
+          <!-- Color & Light Matching -->
+          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-medium text-zinc-300">Luz y Color del Entorno</span>
+              <button id="btnResetColor" type="button" class="text-[10px] text-emerald-400 hover:underline">Reset</button>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Brillo</span><span id="valBright" class="text-zinc-300">100%</span></div>
+              <input id="ctrlBright" type="range" min="40" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Contraste</span><span id="valContrast" class="text-zinc-300">100%</span></div>
+              <input id="ctrlContrast" type="range" min="50" max="160" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Saturación</span><span id="valSat" class="text-zinc-300">100%</span></div>
+              <input id="ctrlSat" type="range" min="20" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Calidez (Sol / Sombra)</span><span id="valWarmth" class="text-zinc-300">0</span></div>
+              <input id="ctrlWarmth" type="range" min="-35" max="45" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+          </div>
+
+          <!-- Ground Shadow -->
+          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+            <span class="block text-[11px] font-medium text-zinc-300">Sombra en el Suelo</span>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Intensidad</span><span id="valShadowOpacity" class="text-zinc-300">45%</span></div>
+              <input id="ctrlShadowOpacity" type="range" min="0" max="100" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Dirección</span><span id="valShadowOffset" class="text-zinc-300">15</span></div>
+              <input id="ctrlShadowOffset" type="range" min="-60" max="60" value="15" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+          </div>
+
+          <!-- PNG Improvement & Mask -->
+          <div class="space-y-2 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+            <span class="block text-[11px] font-medium text-zinc-300">Recorte, Fondo PNG y Máscara</span>
+            <button id="btnOpenPngCleaner" type="button" class="w-full px-2.5 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-200 text-xs font-medium transition">
+              Limpiar fondo blanco / halo PNG
+            </button>
+            <div class="flex gap-1.5">
+              <button id="btnToggleMask" type="button" class="flex-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-medium text-zinc-200 transition">
+                <span id="maskBtnText">Pintar máscara</span>
+              </button>
+              <button id="btnClearMask" type="button" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 transition" title="Restaurar máscara">Reset</button>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Tamaño pincel</span><span id="valBrushSize" class="text-zinc-300">28 px</span></div>
+              <input id="ctrlBrushSize" type="range" min="8" max="80" value="28" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+            </div>
+          </div>
+
+          <button id="btnDeleteLayer" type="button" class="w-full px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-medium transition">
+            Eliminar capa seleccionada
+          </button>
+        </div>
+      </div>
+
+      <!-- Layers List -->
+      <div class="p-3.5 flex-1">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Capas en Escena</h2>
+          <span id="layerCount" class="text-[11px] text-zinc-500">0</span>
+        </div>
+        <div id="layersList" class="space-y-1.5">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- PNG Background Cleaner Modal -->
+  <div id="pngCleanerModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-xl max-w-2xl w-full p-4 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+        <div>
+          <h3 class="text-sm font-semibold text-zinc-100">Mejorar PNG — Quitar fondo blanco y halo</h3>
+          <p class="text-[11px] text-zinc-400">Eliminá fondos claros y bordes blancos para mezclar texturas entre plantas.</p>
+        </div>
+        <button id="btnClosePngCleaner" type="button" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300">Cerrar</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+        <div class="checker-bg rounded-lg border border-zinc-700 h-64 flex items-center justify-center overflow-hidden p-2">
+          <canvas id="cleanerPreviewCanvas" class="max-w-full max-h-full object-contain"></canvas>
+        </div>
+        <div class="space-y-3 text-xs">
+          <div>
+            <div class="flex justify-between mb-1"><span class="text-zinc-300">Tolerancia al blanco</span><span id="valCleanTol" class="text-emerald-400 font-medium">35</span></div>
+            <input id="ctrlCleanTol" type="range" min="0" max="90" value="35" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+          </div>
+          <div>
+            <div class="flex justify-between mb-1"><span class="text-zinc-300">Suavizado de borde</span><span id="valCleanFeather" class="text-emerald-400 font-medium">12</span></div>
+            <input id="ctrlCleanFeather" type="range" min="0" max="40" value="12" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+          </div>
+          <div>
+            <div class="flex justify-between mb-1"><span class="text-zinc-300">Quitar halo blanco (Defringe)</span><span id="valCleanDefringe" class="text-emerald-400 font-medium">1 px</span></div>
+            <input id="ctrlCleanDefringe" type="range" min="0" max="3" value="1" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+          </div>
+          <label class="flex items-center gap-2 text-zinc-300 cursor-pointer pt-1">
+            <input id="chkCleanFloodFill" type="checkbox" checked class="accent-emerald-500" />
+            <span>Solo fondo conectado a los bordes</span>
+          </label>
+          <p class="text-[11px] text-zinc-400 leading-relaxed">
+            Desactivá esa casilla si tu PNG tiene huecos blancos cerrados entre ramas u hojas.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between border-t border-zinc-800 pt-3">
+        <button id="btnRestorePngOriginal" type="button" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 border border-zinc-700">Restaurar original</button>
+        <div class="flex gap-2">
+          <button id="btnApplyPngCleaner" type="button" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">Aplicar al layer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="pointer-events-none fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-zinc-900/95 border border-zinc-700 text-xs text-zinc-100 shadow-xl opacity-0 transition-opacity duration-200 z-50">
+    Listo
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

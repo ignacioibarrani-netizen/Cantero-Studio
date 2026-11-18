@@ -1,0 +1,42 @@
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+input[type="range"] {
+  accent-color: #10b981;
+}
+
+.checker-bg {
+  background-color: #27272a;
+  background-image:
+    linear-gradient(45deg, #323238 25%, transparent 25%),
+    linear-gradient(-45deg, #323238 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #323238 75%),
+    linear-gradient(-45deg, transparent 75%, #323238 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.tool-btn-active {
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  border-color: rgba(16, 185, 129, 0.7) !important;
+  color: #a7f3d0 !important;
+}
