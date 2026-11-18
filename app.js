@@ -120,13 +120,16 @@ hydrateBuiltinContainers();
 function loadImage(src) {
   if (!src) return Promise.resolve(null);
   if (imageCache.has(src)) return Promise.resolve(imageCache.get(src));
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       imageCache.set(src, img);
       resolve(img);
     };
-    img.onerror = reject;
+    img.onerror = () => {
+      console.warn("No se pudo cargar imagen:", src);
+      resolve(null);
+    };
     img.src = src;
   });
 }
@@ -3172,8 +3175,9 @@ document.getElementById("btnDownloadSpecCsv").addEventListener("click", () => {
 async function loadDemoScene() {
   const bg = await loadImage(SAMPLE_BG_SRC);
   bgImage = bg;
-  canvas.width = bg.naturalWidth;
-  canvas.height = bg.naturalHeight;
+  canvas.width = bg ? bg.naturalWidth : 1000;
+  canvas.height = bg ? bg.naturalHeight : 714;
+  rebuildGroundHomography();
   calibration.pxPerMeter = 195;
   viewZoom = 1;
   viewPanX = 0;
@@ -3208,4 +3212,30 @@ window.addEventListener("DOMContentLoaded", async () => {
   hydrateBuiltinContainers();
   renderCatalog();
   await loadDemoScene();
+});
+
+
+// Software-style Top Dropdown Menus
+document.querySelectorAll(".menu-trigger").forEach(trigger => {
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const group = trigger.closest(".menu-group");
+    const drop = group.querySelector(".menu-dropdown");
+    const wasHidden = drop.classList.contains("hidden");
+    document.querySelectorAll(".menu-dropdown").forEach(d => d.classList.add("hidden"));
+    if (wasHidden) drop.classList.remove("hidden");
+  });
+});
+document.addEventListener("click", () => {
+  document.querySelectorAll(".menu-dropdown").forEach(d => d.classList.add("hidden"));
+});
+document.querySelectorAll(".menu-dropdown button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".menu-dropdown").forEach(d => d.classList.add("hidden"));
+  });
+});
+document.getElementById("btnMenuZoomIn").addEventListener("click", () => setViewerZoom(viewZoom * 1.2));
+document.getElementById("btnMenuZoomOut").addEventListener("click", () => setViewerZoom(viewZoom * 0.82));
+document.getElementById("btnMenuZoomReset").addEventListener("click", () => {
+  viewZoom = 1; viewPanX = 0; viewPanY = 0; applyViewTransform();
 });

@@ -525,3 +525,141 @@ export function getContainerRenderSrc({
   renderCache.set(key, dataUrl);
   return dataUrl;
 }
+
+
+/**
+ * Renders a 3D rectangular container directly onto the main scene canvas
+ * using the scene's 3D ground homography (groundToScreen + localPxPerMeter).
+ * Returns the 2D screen bounding box { x, y, w, h, corners2D } for hit-testing & selection.
+ */
+export function drawSceneProjectedBox(ctx, {
+  centerU,
+  centerV,
+  widthM,
+  heightM,
+  depthM,
+  yawDeg = 0,
+  elevationM = 0,
+  material = "cemento",
+  colorId = "gris_claro",
+  isGroundSoil = false,
+  mulch = false,
+  liters = 45,
+  brightness = 100,
+  contrast = 100,
+  saturation = 100,
+  warmth = 0,
+  groundToScreen,
+  getPxPerMeterAt
+}) {
+  const hw = widthM / 2;
+  const hd = depthM / 2;
+  const rad = (yawDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // 4 corners on floor (u, v) in counter-clockwise order: back-left, back-right, front-right, front-left
+  const localCorners = [
+    [-hw, -hd], // 0
+    [ hw, -hd], // 1
+    [ hw,  hd], // 2
+    [-hw,  hd]  // 3
+  ];
+
+  const floorScreen = localCorners.map(([lu, lv]) => {
+    const u = centerU + lu * cos - lv * sin;
+    const v = centerV + lu * sin + lv * cos;
+    return groundToScreen(u, v);
+  });
+
+  // Extrude vertically by elevationM (bottom) and elevationM + heightM (top) using local pxPerMeter
+  const botPts = [];
+  const topPts = [];
+  for (let i = 0; i < 4; i++) {
+    const fp = floorScreen[i];
+    const ppm = getPxPerMeterAt(fp.x, fp.y);
+    const bx = fp.x;
+    const by = fp.y - elevationM * ppm;
+    const tx = fp.x;
+    const ty = fp.y - (elevationM + heightM) * ppm;
+    botPts.push([bx, by]);
+    topPts.push([tx, ty]);
+  }
+
+  // Average depth (screen Y: larger Y is closer to camera)
+  const colorSpec = getColorSpec(material, colorId);
+  const faces = [
+    { idx: [3, 2], shade: 0.96 }, // front
+    { idx: [2, 1], shade: 0.72 }, // right
+    { idx: [1, 0], shade: 0.60 }, // back
+    { idx: [0, 3], shade: 0.78 }  // left
+  ];
+
+  // Determine front-most faces by screen Y of bottom edge (or winding)
+  // Also sort back-to-front by average floor Y so far faces draw behind near faces
+  const faceList = faces.map(f => {
+    const [i0, i1] = f.idx;
+    const avgY = (floorScreen[i0].y + floorScreen[i1].y) / 2;
+    const poly = [topPts[i0], topPts[i1], botPts[i1], botPts[i0]];
+    return { ...f, avgY, poly };
+  }).sort((a, b) => a.avgY - b.avgY);
+
+  ctx.save();
+  const sepiaAmt = warmth > 0 ? warmth * 0.8 : 0;
+  const hueAmt = warmth < 0 ? warmth * 0.7 : 0;
+  ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) sepia(${sepiaAmt}%) hue-rotate(${hueAmt}deg)`;
+
+  for (const f of faceList) {
+    paintTexturedQuad(ctx, f.poly, material, colorSpec, f.shade);
+    ctx.strokeStyle = "rgba(0,0,0,0.32)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    f.poly.forEach(([x, y], idx) => (idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Top face (rim + soil)
+  const topPoly = [topPts[0], topPts[1], topPts[2], topPts[3]];
+  paintTexturedQuad(ctx, topPoly, material, colorSpec, 1.0);
+
+  const inset = isGroundSoil ? 0.06 : 0.09;
+  const cxTop = topPoly.reduce((s, p) => s + p[0], 0) / 4;
+  const cyTop = topPoly.reduce((s, p) => s + p[1], 0) / 4;
+  const innerPoly = topPoly.map(([x, y]) => [
+    cxTop + (x - cxTop) * (1 - inset),
+    cyTop + (y - cyTop) * (1 - inset)
+  ]);
+
+  if (!isGroundSoil && liters <= 0) {
+    paintTexturedQuad(ctx, innerPoly, material, colorSpec, 0.42);
+  } else {
+    paintSoilPoly(ctx, innerPoly, mulch);
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  topPoly.forEach(([x, y], idx) => (idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+
+  const allPts = [...botPts, ...topPts];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of allPts) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return {
+    x: minX,
+    y: minY,
+    w: Math.max(10, maxX - minX),
+    h: Math.max(10, maxY - minY),
+    floorPts: floorScreen.map(p => [p.x, p.y]),
+    botPts,
+    topPts
+  };
+}
