@@ -89,12 +89,7 @@ const tempCanvas = document.createElement("canvas");
 const tempCtx = tempCanvas.getContext("2d");
 
 function getScenePerspStrength() {
-  const q = perspective.quad;
-  const topW = Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
-  const botW = Math.hypot(q.br.x - q.bl.x, q.br.y - q.bl.y);
-  const ratio = botW > 0.01 ? Math.max(0.25, Math.min(1.0, topW / botW)) : 0.65;
-  // Stronger convergence in scene quad -> stronger 3D Z-foreshortening on canteros
-  return 0.0004 + (1 - ratio) * 0.0024;
+  return 0.0011;
 }
 
 // Hydrate procedural src for built-in containers/soil
@@ -2057,12 +2052,12 @@ function setCalibrationMode(active, step = 1) {
       document.getElementById("calibratePromptText").textContent =
         "Paso 2 (Atrás): marcá 2 puntos de algo lejano para calcular la perspectiva";
     }
-    btn.classList.add("tool-btn-active");
+    if (btn) btn.classList.add("tool-btn-active");
     canvas.style.cursor = "crosshair";
   } else {
     banner.classList.add("hidden");
     skipBtn.classList.add("hidden");
-    btn.classList.remove("tool-btn-active");
+    if (btn) btn.classList.remove("tool-btn-active");
     canvas.style.cursor = maskMode ? "crosshair" : "grab";
   }
   draw();
@@ -2074,10 +2069,10 @@ function setPerspectiveVisible(active) {
   const btn = document.getElementById("btnPerspective");
   if (active) {
     banner.classList.remove("hidden");
-    btn.classList.add("tool-btn-active");
+    if (btn) btn.classList.add("tool-btn-active");
   } else {
     banner.classList.add("hidden");
-    btn.classList.remove("tool-btn-active");
+    if (btn) btn.classList.remove("tool-btn-active");
   }
   draw();
 }
