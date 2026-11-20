@@ -1,4 +1,5 @@
 import { SAMPLE_BG_SRC, BUILTIN_ITEMS } from "./data/catalog.js";
+import { solveCameraFromLines } from "./utils/cameraSolver.js";
 import { CONTAINER_MATERIALS, getContainerRenderSrc, getContainerRenderMeta, preloadContainerTextures, drawSceneProjectedBox } from "./utils/containerRenderer.js";
 
 const CUSTOM_STORAGE_KEY = "cantero_custom_catalog_v1";
@@ -57,15 +58,15 @@ const calibration = {
 const perspective = {
   visible: false,
   autoScale: true,
-  gridWidthM: 4.0,
-  gridDepthM: 5.0,
-  verticalMultiplier: 1.0,
-  // Normalized [0..1] quad: tl, tr (back/far), br, bl (front/near)
-  quad: {
-    tl: { x: 0.28, y: 0.56 },
-    tr: { x: 0.72, y: 0.56 },
-    br: { x: 0.92, y: 0.94 },
-    bl: { x: 0.08, y: 0.94 }
+  showFloorGrid: true,
+  fspy: {
+    xLine1: [{ x: 0.16, y: 0.86 }, { x: 0.84, y: 0.86 }],
+    xLine2: [{ x: 0.25, y: 0.62 }, { x: 0.75, y: 0.62 }],
+    yLine1: [{ x: 0.16, y: 0.86 }, { x: 0.30, y: 0.56 }],
+    yLine2: [{ x: 0.84, y: 0.86 }, { x: 0.70, y: 0.56 }],
+    refLine: [{ x: 0.42, y: 0.78 }, { x: 0.58, y: 0.78 }],
+    refMeters: 1.5,
+    refType: "auto"
   }
 };
 
@@ -148,7 +149,7 @@ function pushUndoSnapshot() {
     layers: layers.map(l => ({ ...l, maskCanvas: cloneMaskCanvas(l.maskCanvas) })),
     selectedId,
     calibration: { ...calibration, pts: [] },
-    quad: JSON.parse(JSON.stringify(perspective.quad))
+    fspy: JSON.parse(JSON.stringify(perspective.fspy))
   };
   undoStack.push(snap);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
@@ -164,7 +165,8 @@ async function undoLastAction() {
   calibration.pxPerMeter = snap.calibration.pxPerMeter;
   calibration.refPxPerMeter = snap.calibration.refPxPerMeter;
   calibration.refY = snap.calibration.refY;
-  perspective.quad = snap.quad;
+  perspective.fspy = snap.fspy;
+  rebuildGroundHomography();
   await Promise.all(layers.map(l => loadImage(l.src)));
   const btn = document.getElementById("btnUndo");
   if (btn) btn.disabled = undoStack.length === 0;
@@ -224,125 +226,46 @@ document.getElementById("btnZoomReset").addEventListener("click", () => {
 
 // Perspective & Homography Math
 
-// === 3D Ground-Plane Homography Engine ===
-let homographyFwd = null; // 3x3 array
-let homographyInv = null; // 3x3 array
-
-function solve8x8(A, b) {
-  const n = 8;
-  const M = A.map((row, i) => [...row, b[i]]);
-  for (let col = 0; col < n; col++) {
-    let maxRow = col;
-    for (let r = col + 1; r < n; r++) {
-      if (Math.abs(M[r][col]) > Math.abs(M[maxRow][col])) maxRow = r;
-    }
-    [M[col], M[maxRow]] = [M[maxRow], M[col]];
-    const piv = M[col][col];
-    if (Math.abs(piv) < 1e-10) return null;
-    for (let j = col; j <= n; j++) M[col][j] /= piv;
-    for (let r = 0; r < n; r++) {
-      if (r === col) continue;
-      const f = M[r][col];
-      for (let j = col; j <= n; j++) M[r][j] -= f * M[col][j];
-    }
-  }
-  return M.map(row => row[n]);
-}
-
-function invert3x3(m) {
-  const [a, b, c] = m[0];
-  const [d, e, f] = m[1];
-  const [g, h, i] = m[2];
-  const A = e * i - f * h;
-  const B = -(d * i - f * g);
-  const C = d * h - e * g;
-  const D = -(b * i - c * h);
-  const E = a * i - c * g;
-  const F = -(a * h - b * g);
-  const G = b * f - c * e;
-  const H = -(a * f - c * d);
-  const I = a * e - b * d;
-  const det = a * A + b * B + c * C;
-  if (Math.abs(det) < 1e-12) return null;
-  const invDet = 1 / det;
-  return [
-    [A * invDet, D * invDet, G * invDet],
-    [B * invDet, E * invDet, H * invDet],
-    [C * invDet, F * invDet, I * invDet]
-  ];
-}
+// === fSpy 3D Camera Engine ===
+let activeCamera = null;
 
 function rebuildGroundHomography() {
   const cw = canvas.width || 1000;
   const ch = canvas.height || 714;
-  const q = perspective.quad;
-  const W = Math.max(0.5, perspective.gridWidthM || 4.0);
-  const D = Math.max(0.5, perspective.gridDepthM || 5.0);
-
-  const src = [[0, 0], [W, 0], [W, D], [0, D]];
-  const dst = [
-    [q.tl.x * cw, q.tl.y * ch],
-    [q.tr.x * cw, q.tr.y * ch],
-    [q.br.x * cw, q.br.y * ch],
-    [q.bl.x * cw, q.bl.y * ch]
-  ];
-
-  const A = [];
-  const b = [];
-  for (let i = 0; i < 4; i++) {
-    const [u, v] = src[i];
-    const [x, y] = dst[i];
-    A.push([u, v, 1, 0, 0, 0, -u * x, -v * x]);
-    b.push(x);
-    A.push([0, 0, 0, u, v, 1, -u * y, -v * y]);
-    b.push(y);
-  }
-  const h = solve8x8(A, b);
-  if (!h) {
-    homographyFwd = null;
-    homographyInv = null;
-    return;
-  }
-  homographyFwd = [
-    [h[0], h[1], h[2]],
-    [h[3], h[4], h[5]],
-    [h[6], h[7], 1]
-  ];
-  homographyInv = invert3x3(homographyFwd);
+  const f = perspective.fspy;
+  const toPx = (pt) => ({ x: pt.x * cw, y: pt.y * ch });
+  activeCamera = solveCameraFromLines({
+    cw,
+    ch,
+    xLine1: [toPx(f.xLine1[0]), toPx(f.xLine1[1])],
+    xLine2: [toPx(f.xLine2[0]), toPx(f.xLine2[1])],
+    yLine1: [toPx(f.yLine1[0]), toPx(f.yLine1[1])],
+    yLine2: [toPx(f.yLine2[0]), toPx(f.yLine2[1])],
+    refLine: [toPx(f.refLine[0]), toPx(f.refLine[1])],
+    refMeters: f.refMeters || 1.5,
+    refType: f.refType || "auto"
+  });
 }
 
 function groundToScreen(u, v) {
-  if (!homographyFwd) rebuildGroundHomography();
-  if (!homographyFwd) return { x: 0, y: 0 };
-  const m = homographyFwd;
-  const w = m[2][0] * u + m[2][1] * v + m[2][2];
-  const safeW = Math.abs(w) < 1e-5 ? (w >= 0 ? 1e-5 : -1e-5) : w;
-  return {
-    x: (m[0][0] * u + m[0][1] * v + m[0][2]) / safeW,
-    y: (m[1][0] * u + m[1][1] * v + m[1][2]) / safeW
-  };
+  if (!activeCamera) rebuildGroundHomography();
+  return activeCamera ? activeCamera.worldToScreen(u, v, 0) : { x: 0, y: 0 };
+}
+
+function worldToScreen(wx, wy, wz = 0) {
+  if (!activeCamera) rebuildGroundHomography();
+  return activeCamera ? activeCamera.worldToScreen(wx, wy, wz) : { x: 0, y: 0 };
 }
 
 function screenToGround(x, y) {
-  if (!homographyInv) rebuildGroundHomography();
-  if (!homographyInv) return { u: 0, v: 0 };
-  const m = homographyInv;
-  const w = m[2][0] * x + m[2][1] * y + m[2][2];
-  const safeW = Math.abs(w) < 1e-5 ? (w >= 0 ? 1e-5 : -1e-5) : w;
-  return {
-    u: (m[0][0] * x + m[0][1] * y + m[0][2]) / safeW,
-    v: (m[1][0] * x + m[1][1] * y + m[1][2]) / safeW
-  };
+  if (!activeCamera) rebuildGroundHomography();
+  const fp = activeCamera ? activeCamera.screenToFloor(x, y) : null;
+  return fp ? { u: fp.x, v: fp.y } : { u: 0, v: 0 };
 }
 
 function getHomographyPxPerMeterAt(x, y) {
-  if (!homographyFwd || !homographyInv) rebuildGroundHomography();
-  if (!homographyFwd || !homographyInv) return calibration.refPxPerMeter || 195;
-  const { u, v } = screenToGround(x, y);
-  const p0 = groundToScreen(u, v);
-  const p1 = groundToScreen(u + 0.1, v);
-  const rawPxPerM = Math.hypot(p1.x - p0.x, p1.y - p0.y) * 10;
-  return Math.max(18, Math.min(2400, rawPxPerM * (perspective.verticalMultiplier || 1.0)));
+  if (!activeCamera) rebuildGroundHomography();
+  return activeCamera ? activeCamera.getPxPerMeterAt(x, y) : 180;
 }
 
 function getPerspectiveFactorAtY(yPx, xPx = null) {
@@ -545,8 +468,7 @@ function isHomographyBox(layer) {
     layer.kind === "container" &&
     (layer.shape === "cantero_rect" || layer.shape === "maceta_cubo" || layer.shape === "jardinera_alta" || layer.shape === "tierra_cantero") &&
     perspective.autoScale &&
-    homographyFwd &&
-    homographyInv
+    activeCamera
   );
 }
 
@@ -665,6 +587,7 @@ function renderScene(targetCtx, forExport = false) {
         saturation: layer.saturation,
         warmth: layer.warmth,
         groundToScreen,
+        worldToScreen,
         getPxPerMeterAt: getHomographyPxPerMeterAt
       });
       layer._lastProjRect = proj;
@@ -915,99 +838,110 @@ function drawScaleBar(targetCtx, cw, ch) {
 }
 
 function drawPerspectiveGrid(targetCtx, cw, ch) {
-  const q = perspective.quad;
-  const p = {
-    tl: { x: q.tl.x * cw, y: q.tl.y * ch, lbl: "Fondo Izq" },
-    tr: { x: q.tr.x * cw, y: q.tr.y * ch, lbl: "Fondo Der" },
-    br: { x: q.br.x * cw, y: q.br.y * ch, lbl: "Frente Der" },
-    bl: { x: q.bl.x * cw, y: q.bl.y * ch, lbl: "Frente Izq" }
-  };
+  if (!activeCamera) rebuildGroundHomography();
+  const cam = activeCamera;
+  if (!cam) return;
 
   targetCtx.save();
 
-  // Translucent ground plane fill
-  targetCtx.fillStyle = "rgba(139, 92, 246, 0.12)";
-  targetCtx.beginPath();
-  targetCtx.moveTo(p.tl.x, p.tl.y);
-  targetCtx.lineTo(p.tr.x, p.tr.y);
-  targetCtx.lineTo(p.br.x, p.br.y);
-  targetCtx.lineTo(p.bl.x, p.bl.y);
-  targetCtx.closePath();
-  targetCtx.fill();
+  // 1. Optional 1m x 1m 3D floor grid centered on visible floor
+  if (perspective.showFloorGrid) {
+    const centerFloor = cam.screenToFloor(cw * 0.5, ch * 0.72) || { x: 0, y: 4 };
+    const cx0 = Math.round(centerFloor.x);
+    const cy0 = Math.round(centerFloor.y);
+    const span = 6;
 
-  rebuildGroundHomography();
-  const W = Math.max(0.5, perspective.gridWidthM || 4.0);
-  const D = Math.max(0.5, perspective.gridDepthM || 5.0);
-  const stepM = (W <= 3 && D <= 3) ? 0.5 : 1.0;
-
-  const drawGridLines = (strokeStyle, lineWidth) => {
-    targetCtx.strokeStyle = strokeStyle;
-    targetCtx.lineWidth = lineWidth;
-    for (let v = 0; v <= D + 0.001; v += stepM) {
-      const vv = Math.min(D, v);
-      const a = groundToScreen(0, vv);
-      const b = groundToScreen(W, vv);
-      targetCtx.beginPath();
-      targetCtx.moveTo(a.x, a.y);
-      targetCtx.lineTo(b.x, b.y);
-      targetCtx.stroke();
-    }
-    for (let u = 0; u <= W + 0.001; u += stepM) {
-      const uu = Math.min(W, u);
-      const a = groundToScreen(uu, 0);
-      const b = groundToScreen(uu, D);
-      targetCtx.beginPath();
-      targetCtx.moveTo(a.x, a.y);
-      targetCtx.lineTo(b.x, b.y);
-      targetCtx.stroke();
-    }
-  };
-
-  // Dark contrast halo + bright thick violet grid
-  drawGridLines("rgba(0, 0, 0, 0.7)", Math.max(5, cw / 240));
-  drawGridLines("rgba(196, 181, 253, 0.92)", Math.max(2.5, cw / 400));
-
-  // Thick outer border
-  targetCtx.strokeStyle = "#a78bfa";
-  targetCtx.lineWidth = Math.max(4, cw / 280);
-  targetCtx.beginPath();
-  targetCtx.moveTo(p.tl.x, p.tl.y);
-  targetCtx.lineTo(p.tr.x, p.tr.y);
-  targetCtx.lineTo(p.br.x, p.br.y);
-  targetCtx.lineTo(p.bl.x, p.bl.y);
-  targetCtx.closePath();
-  targetCtx.stroke();
-
-  // Large draggable corner handles with labels
-  const r = Math.max(10, cw / 95);
-  const fSize = Math.max(13, Math.round(cw / 75));
-  targetCtx.font = `600 ${fSize}px Inter, sans-serif`;
-
-  for (const key of ["tl", "tr", "br", "bl"]) {
-    const pt = p[key];
-    const offscreen = pt.x < 12 || pt.x > cw - 12 || pt.y < 12 || pt.y > ch - 12;
-    const hx = Math.max(14, Math.min(cw - 14, pt.x));
-    const hy = Math.max(14, Math.min(ch - 14, pt.y));
-
-    targetCtx.fillStyle = offscreen ? "#ec4899" : "#7c3aed";
-    targetCtx.strokeStyle = "#ffffff";
-    targetCtx.lineWidth = 3;
+    // Subtle horizon line
+    const hyL = cam.horizonY(0);
+    const hyR = cam.horizonY(cw);
+    targetCtx.strokeStyle = "rgba(167, 139, 250, 0.35)";
+    targetCtx.lineWidth = 1.5;
+    targetCtx.setLineDash([6, 6]);
     targetCtx.beginPath();
-    targetCtx.arc(hx, hy, r, 0, Math.PI * 2);
-    targetCtx.fill();
+    targetCtx.moveTo(0, hyL);
+    targetCtx.lineTo(cw, hyR);
+    targetCtx.stroke();
+    targetCtx.setLineDash([]);
+
+    targetCtx.strokeStyle = "rgba(167, 139, 250, 0.45)";
+    targetCtx.lineWidth = Math.max(1.5, cw / 650);
+    for (let u = cx0 - span; u <= cx0 + span; u += 1) {
+      const a = cam.worldToScreen(u, cy0 - span, 0);
+      const b = cam.worldToScreen(u, cy0 + span, 0);
+      if (a.z > 0.1 && b.z > 0.1) {
+        targetCtx.beginPath();
+        targetCtx.moveTo(a.x, a.y);
+        targetCtx.lineTo(b.x, b.y);
+        targetCtx.stroke();
+      }
+    }
+    for (let v = cy0 - span; v <= cy0 + span; v += 1) {
+      const a = cam.worldToScreen(cx0 - span, v, 0);
+      const b = cam.worldToScreen(cx0 + span, v, 0);
+      if (a.z > 0.1 && b.z > 0.1) {
+        targetCtx.beginPath();
+        targetCtx.moveTo(a.x, a.y);
+        targetCtx.lineTo(b.x, b.y);
+        targetCtx.stroke();
+      }
+    }
+  }
+
+  // 2. Draw fSpy Vanishing Lines (2 Red X, 2 Green Y, 1 Blue Ref)
+  const f = perspective.fspy;
+  const lineSpecs = [
+    { key: "xLine1", pts: f.xLine1, color: "#ef4444", label: "X1" },
+    { key: "xLine2", pts: f.xLine2, color: "#ef4444", label: "X2" },
+    { key: "yLine1", pts: f.yLine1, color: "#10b981", label: "Y1" },
+    { key: "yLine2", pts: f.yLine2, color: "#10b981", label: "Y2" },
+    { key: "refLine", pts: f.refLine, color: "#38bdf8", label: `${(f.refMeters || 1.5).toFixed(2)}m` }
+  ];
+
+  const handleR = Math.max(8, cw / 115);
+  const fSize = Math.max(13, Math.round(cw / 78));
+  targetCtx.font = `700 ${fSize}px Inter, sans-serif`;
+
+  for (const spec of lineSpecs) {
+    const p0 = { x: spec.pts[0].x * cw, y: spec.pts[0].y * ch };
+    const p1 = { x: spec.pts[1].x * cw, y: spec.pts[1].y * ch };
+
+    // Dark contrast halo + bright line
+    targetCtx.strokeStyle = "rgba(0,0,0,0.7)";
+    targetCtx.lineWidth = Math.max(5, cw / 230);
+    targetCtx.beginPath();
+    targetCtx.moveTo(p0.x, p0.y);
+    targetCtx.lineTo(p1.x, p1.y);
     targetCtx.stroke();
 
-    const lblText = offscreen ? `${pt.lbl} (fuera)` : pt.lbl;
-    const tw = targetCtx.measureText(lblText).width + 10;
-    const lx = Math.min(cw - tw - 4, Math.max(4, hx - tw / 2));
-    const ly = key.startsWith("t") ? Math.max(4, hy - r - fSize - 10) : Math.min(ch - fSize - 10, hy - r - fSize - 10);
+    targetCtx.strokeStyle = spec.color;
+    targetCtx.lineWidth = Math.max(2.5, cw / 400);
+    targetCtx.beginPath();
+    targetCtx.moveTo(p0.x, p0.y);
+    targetCtx.lineTo(p1.x, p1.y);
+    targetCtx.stroke();
+
+    for (const pt of [p0, p1]) {
+      targetCtx.fillStyle = spec.color;
+      targetCtx.strokeStyle = "#ffffff";
+      targetCtx.lineWidth = 2.5;
+      targetCtx.beginPath();
+      targetCtx.arc(pt.x, pt.y, handleR, 0, Math.PI * 2);
+      targetCtx.fill();
+      targetCtx.stroke();
+    }
+
+    // Midpoint label
+    const mx = (p0.x + p1.x) / 2;
+    const my = (p0.y + p1.y) / 2;
+    const tw = targetCtx.measureText(spec.label).width + 10;
     targetCtx.fillStyle = "rgba(9, 9, 11, 0.88)";
     targetCtx.beginPath();
-    targetCtx.roundRect(lx, ly, tw, fSize + 8, 4);
+    targetCtx.roundRect(mx - tw / 2, my - fSize / 2 - 4, tw, fSize + 8, 4);
     targetCtx.fill();
-    targetCtx.fillStyle = offscreen ? "#fbcfe8" : "#ddd6fe";
-    targetCtx.fillText(lblText, lx + 5, ly + fSize + 1);
+    targetCtx.fillStyle = spec.color;
+    targetCtx.fillText(spec.label, mx - tw / 2 + 5, my + fSize / 2 - 1);
   }
+
   targetCtx.restore();
 }
 
@@ -1092,18 +1026,19 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  // 2. Perspective quad handles
+  // 2. fSpy vanishing line handles
   if (perspective.visible) {
-    const tol = Math.max(20, canvas.width / 50);
-    for (const key of ["tl", "tr", "br", "bl"]) {
-      const rawX = perspective.quad[key].x * canvas.width;
-      const rawY = perspective.quad[key].y * canvas.height;
-      const px = Math.max(14, Math.min(canvas.width - 14, rawX));
-      const py = Math.max(14, Math.min(canvas.height - 14, rawY));
-      if (Math.hypot(x - px, y - py) <= tol) {
-        pushUndoSnapshot();
-        dragState = { type: "persp", key };
-        return;
+    const tol = Math.max(20, canvas.width / 48);
+    const f = perspective.fspy;
+    for (const lineKey of ["refLine", "xLine1", "xLine2", "yLine1", "yLine2"]) {
+      for (let idx = 0; idx < 2; idx++) {
+        const px = f[lineKey][idx].x * canvas.width;
+        const py = f[lineKey][idx].y * canvas.height;
+        if (Math.hypot(x - px, y - py) <= tol) {
+          pushUndoSnapshot();
+          dragState = { type: "fspy", lineKey, idx };
+          return;
+        }
       }
     }
   }
@@ -1195,9 +1130,10 @@ canvas.addEventListener("pointermove", (e) => {
 
   const { x, y } = getCanvasCoords(e);
 
-  if (dragState.type === "persp") {
-    perspective.quad[dragState.key].x = Math.max(-0.8, Math.min(1.8, x / canvas.width));
-    perspective.quad[dragState.key].y = Math.max(-0.2, Math.min(1.8, y / canvas.height));
+  if (dragState.type === "fspy") {
+    const pt = perspective.fspy[dragState.lineKey][dragState.idx];
+    pt.x = Math.max(0.01, Math.min(0.99, x / canvas.width));
+    pt.y = Math.max(0.01, Math.min(0.99, y / canvas.height));
     rebuildGroundHomography();
     draw();
   } else if (dragState.type === "mask") {
@@ -2068,7 +2004,7 @@ function syncUI() {
     targetBanner.classList.add("hidden");
   }
 
-  document.getElementById("scaleStatusText").textContent = `Escala: 1 m ≈ ${Math.round(calibration.pxPerMeter)} px`;
+  document.getElementById("scaleStatusText").textContent = activeCamera ? `Cámara 3D: alt. ${activeCamera.hCam.toFixed(2)} m · f ${Math.round(activeCamera.f)} px` : "Escala lista";
   renderLayersList();
 }
 
@@ -2161,128 +2097,36 @@ function deleteSelectedLayer() {
   draw();
 }
 
-// Calibration & Perspective Listeners
-document.getElementById("btnCalibrate").addEventListener("click", () => setCalibrationMode(!calibration.mode));
-document.getElementById("btnCancelCalibrate").addEventListener("click", () => setCalibrationMode(false));
-document.getElementById("btnSkipBackCalibrate").addEventListener("click", () => {
-  if (calibration.frontSample) {
-    calibration.refPxPerMeter = calibration.frontSample.pxPerM;
-    calibration.refY = calibration.frontSample.y;
-    calibration.pxPerMeter = calibration.frontSample.pxPerM;
-    perspective.autoScale = false;
-    document.getElementById("chkAutoPerspective").checked = false;
-  }
-  setCalibrationMode(false);
-  syncUI();
-  draw();
-  showToast("Calibrado sin perspectiva (escala uniforme)");
-});
-
-document.getElementById("btnApplyCalibrate").addEventListener("click", () => {
-  if (calibration.pts.length < 2) return;
-  const meters = Number(document.getElementById("calibrateMetersInput").value);
-  if (!meters || meters <= 0) return;
-  const [p1, p2] = calibration.pts;
-  const distPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  if (distPx < 8) {
-    showToast("Marcá dos puntos más separados");
-    return;
-  }
-  const calY = Math.abs(p2.y - p1.y) > Math.abs(p2.x - p1.x) ? Math.max(p1.y, p2.y) : (p1.y + p2.y) / 2;
-  const pxPerM = distPx / meters;
-
-  if (calibration.step === 1) {
-    // Calibrate verticalMultiplier directly against the homography at the clicked ground point!
-    const calX = (p1.x + p2.x) / 2;
-    perspective.verticalMultiplier = 1.0;
-    const gridPxAtPt = getHomographyPxPerMeterAt(calX, calY);
-    if (perspective.autoScale && gridPxAtPt > 10) {
-      perspective.verticalMultiplier = Math.max(0.25, Math.min(4.0, pxPerM / gridPxAtPt));
-    }
-    calibration.refPxPerMeter = pxPerM;
-    calibration.refY = calY;
-    calibration.pxPerMeter = pxPerM;
-    setCalibrationMode(false);
-    syncUI();
-    draw();
-    showToast(`Altura calibrada sobre la grilla (1 m ≈ ${Math.round(pxPerM)} px ahí)`);
-    return;
-  }
-
-  // Step 2: compute exact perspective ratio between frontSample and backSample!
-  pushUndoSnapshot();
-  const front = calibration.frontSample || { y: canvas.height * 0.9, pxPerM: calibration.refPxPerMeter };
-  const back = { y: calY, pxPerM };
-  // Ensure frontY > backY (near is lower on screen)
-  const near = front.y >= back.y ? front : back;
-  const far = front.y >= back.y ? back : front;
-
-  const ch = canvas.height || 714;
-  const ratio = Math.max(0.18, Math.min(1.0, far.pxPerM / Math.max(5, near.pxPerM)));
-  const halfBotW = 0.42;
-  const halfTopW = halfBotW * ratio;
-
-  perspective.quad = {
-    tl: { x: 0.5 - halfTopW, y: far.y / ch },
-    tr: { x: 0.5 + halfTopW, y: far.y / ch },
-    br: { x: 0.5 + halfBotW, y: near.y / ch },
-    bl: { x: 0.5 - halfBotW, y: near.y / ch }
-  };
-  perspective.autoScale = true;
-  document.getElementById("chkAutoPerspective").checked = true;
-  calibration.refPxPerMeter = near.pxPerM;
-  calibration.refY = near.y;
-  calibration.pxPerMeter = near.pxPerM;
-
-  setCalibrationMode(false);
-  refreshAllContainersPerspective();
-  syncUI();
-  draw();
-  showToast(`Escala y perspectiva calibradas (compresión fondo: ${Math.round(ratio * 100)}%)`);
-});
-
+// fSpy Perspective Listeners
 document.getElementById("btnPerspective").addEventListener("click", () => setPerspectiveVisible(!perspective.visible));
-document.getElementById("btnExtendPerspectiveFront").addEventListener("click", () => {
-  pushUndoSnapshot();
-  const q = perspective.quad;
-  const k = 0.25;
-  q.bl.x = Math.max(-0.8, Math.min(1.8, q.bl.x + (q.bl.x - q.tl.x) * k));
-  q.bl.y = Math.max(-0.2, Math.min(1.8, q.bl.y + (q.bl.y - q.tl.y) * k));
-  q.br.x = Math.max(-0.8, Math.min(1.8, q.br.x + (q.br.x - q.tr.x) * k));
-  q.br.y = Math.max(-0.2, Math.min(1.8, q.br.y + (q.br.y - q.tr.y) * k));
-  refreshAllContainersPerspective();
-  draw();
-  showToast("Malla proyectada hacia adelante (+25%)");
-});
-
 document.getElementById("btnExitPerspective").addEventListener("click", () => setPerspectiveVisible(false));
 document.getElementById("chkAutoPerspective").addEventListener("change", (e) => {
   perspective.autoScale = e.target.checked;
   showToast(perspective.autoScale ? "Auto-escala por perspectiva activada" : "Auto-escala desactivada");
 });
-
-document.getElementById("ctrlGridWidthM").addEventListener("input", (e) => {
-  const val = parseFloat(e.target.value);
-  if (val > 0.2) {
-    perspective.gridWidthM = val;
-    rebuildGroundHomography();
-    syncUI();
-    draw();
-  }
-});
-document.getElementById("ctrlGridDepthM").addEventListener("input", (e) => {
-  const val = parseFloat(e.target.value);
-  if (val > 0.2) {
-    perspective.gridDepthM = val;
-    rebuildGroundHomography();
-    syncUI();
-    draw();
-  }
-});
-
 document.getElementById("btnStartPerspectiveNow").addEventListener("click", () => {
   document.getElementById("perspectiveGuideModal").classList.add("hidden");
   setPerspectiveVisible(true);
+});
+
+document.getElementById("ctrlFspyRefMeters").addEventListener("input", (e) => {
+  const val = parseFloat(e.target.value);
+  if (val > 0.02) {
+    perspective.fspy.refMeters = val;
+    rebuildGroundHomography();
+    syncUI();
+    draw();
+  }
+});
+document.getElementById("ctrlFspyRefType").addEventListener("change", (e) => {
+  perspective.fspy.refType = e.target.value;
+  rebuildGroundHomography();
+  syncUI();
+  draw();
+});
+document.getElementById("chkShowFloorGrid").addEventListener("change", (e) => {
+  perspective.showFloorGrid = e.target.checked;
+  draw();
 });
 
 // Container 3D View (Horizontal + Vertical) & Material Listeners
