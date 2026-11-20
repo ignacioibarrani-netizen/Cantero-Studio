@@ -550,6 +550,7 @@ export function drawSceneProjectedBox(ctx, {
   saturation = 100,
   warmth = 0,
   groundToScreen,
+  worldToScreen = null,
   getPxPerMeterAt
 }) {
   const hw = widthM / 2;
@@ -558,32 +559,37 @@ export function drawSceneProjectedBox(ctx, {
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
 
-  // 4 corners on floor (u, v) in counter-clockwise order: back-left, back-right, front-right, front-left
   const localCorners = [
-    [-hw, -hd], // 0
-    [ hw, -hd], // 1
-    [ hw,  hd], // 2
-    [-hw,  hd]  // 3
+    [-hw, -hd], // 0: back-left
+    [ hw, -hd], // 1: back-right
+    [ hw,  hd], // 2: front-right
+    [-hw,  hd]  // 3: front-left
   ];
 
-  const floorScreen = localCorners.map(([lu, lv]) => {
-    const u = centerU + lu * cos - lv * sin;
-    const v = centerV + lu * sin + lv * cos;
-    return groundToScreen(u, v);
-  });
+  const worldCorners = localCorners.map(([lu, lv]) => ({
+    u: centerU + lu * cos - lv * sin,
+    v: centerV + lu * sin + lv * cos
+  }));
 
-  // Extrude vertically by elevationM (bottom) and elevationM + heightM (top) using local pxPerMeter
+  const floorScreen = worldCorners.map(({ u, v }) =>
+    worldToScreen ? worldToScreen(u, v, 0) : groundToScreen(u, v)
+  );
+
   const botPts = [];
   const topPts = [];
   for (let i = 0; i < 4; i++) {
-    const fp = floorScreen[i];
-    const ppm = getPxPerMeterAt(fp.x, fp.y);
-    const bx = fp.x;
-    const by = fp.y - elevationM * ppm;
-    const tx = fp.x;
-    const ty = fp.y - (elevationM + heightM) * ppm;
-    botPts.push([bx, by]);
-    topPts.push([tx, ty]);
+    if (worldToScreen) {
+      const { u, v } = worldCorners[i];
+      const bp = worldToScreen(u, v, elevationM);
+      const tp = worldToScreen(u, v, elevationM + heightM);
+      botPts.push([bp.x, bp.y]);
+      topPts.push([tp.x, tp.y]);
+    } else {
+      const fp = floorScreen[i];
+      const ppm = getPxPerMeterAt(fp.x, fp.y);
+      botPts.push([fp.x, fp.y - elevationM * ppm]);
+      topPts.push([fp.x, fp.y - (elevationM + heightM) * ppm]);
+    }
   }
 
   // Average depth (screen Y: larger Y is closer to camera)
