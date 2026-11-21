@@ -162,8 +162,8 @@
       </div>
 
       <div id="perspectiveBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-zinc-900/95 border border-violet-500/50 text-zinc-200 text-xs flex flex-wrap items-center gap-2.5 z-20 shrink-0 shadow-lg">
-        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>Eje X (ancho)</span>
-        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Eje Y (fondo)</span>
+        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>Eje X (piso)</span>
+        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Eje Y (piso 90°)</span>
         <label class="inline-flex items-center gap-1 border-l border-zinc-700 pl-2">
           <span class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
           <span>Medida azul:</span>
@@ -382,13 +382,21 @@
                 <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Calidez (Sol / Sombra)</span><span id="valWarmth" class="text-zinc-300">0</span></div>
                 <input id="ctrlWarmth" type="range" min="-35" max="45" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
-              <div>
-                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Intensidad)</span><span id="valShadowOpacity" class="text-zinc-300">45%</span></div>
+              <div class="pt-1 border-t border-zinc-800/70">
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Oscuridad)</span><span id="valShadowOpacity" class="text-zinc-300">45%</span></div>
                 <input id="ctrlShadowOpacity" type="range" min="0" max="100" value="45" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
               <div>
-                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Dirección)</span><span id="valShadowOffset" class="text-zinc-300">15</span></div>
-                <input id="ctrlShadowOffset" type="range" min="-60" max="60" value="15" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Ángulo luz)</span><span id="valShadowAngle" class="text-zinc-300">35°</span></div>
+                <input id="ctrlShadowAngle" type="range" min="0" max="355" step="5" value="35" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Largo)</span><span id="valShadowLength" class="text-zinc-300">50%</span></div>
+                <input id="ctrlShadowLength" type="range" min="0" max="150" value="50" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Sombra (Suavizado)</span><span id="valShadowBlur" class="text-zinc-300">10 px</span></div>
+                <input id="ctrlShadowBlur" type="range" min="0" max="35" value="10" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
             </div>
           </details>
@@ -455,7 +463,7 @@
         </div>
         <div class="flex items-start gap-2">
           <span class="w-3 h-3 rounded-full bg-emerald-500 mt-0.5 shrink-0"></span>
-          <div><strong>2 líneas verdes (Eje Y):</strong> apoyalas sobre dos líneas que vayan hacia el fondo (ej. juntas de baldosas o medianera).</div>
+          <div><strong>2 líneas verdes (Eje Y — en el PISO a 90°):</strong> apoyalas sobre las otras juntas de las baldosas del piso que cruzan en perpendicular a las rojas (NO verticales en la pared).</div>
         </div>
         <div class="flex items-start gap-2">
           <span class="w-3 h-3 rounded-full bg-sky-400 mt-0.5 shrink-0"></span>

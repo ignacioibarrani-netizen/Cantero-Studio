@@ -72,6 +72,7 @@ const perspective = {
 
 // Drag / Resize / Paint / Perspective interaction state
 let dragState = null;
+let hoverCanvasPos = null;
 
 // Modals state
 let cleanerTargetUid = null;
@@ -87,6 +88,8 @@ const imageCache = new Map();
 
 const tempCanvas = document.createElement("canvas");
 const tempCtx = tempCanvas.getContext("2d");
+const boxTempCanvas = document.createElement("canvas");
+const boxTempCtx = boxTempCanvas.getContext("2d");
 
 function getScenePerspStrength() {
   return 0.0011;
@@ -435,7 +438,9 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
     saturation: 100,
     warmth: 0,
     shadowOpacity: item.isGroundSoil ? 20 : 45,
-    shadowOffset: 15,
+    shadowAngle: 35,
+    shadowLength: 50,
+    shadowBlur: 10,
     visible: true,
     locked: false,
     elevationM: 0,
@@ -564,7 +569,11 @@ function renderScene(targetCtx, forExport = false) {
 
     if (isHomographyBox(layer)) {
       const { u, v } = screenToGround(layer.x, layer.y);
-      const proj = drawSceneProjectedBox(targetCtx, {
+      boxTempCanvas.width = cw;
+      boxTempCanvas.height = ch;
+      boxTempCtx.clearRect(0, 0, cw, ch);
+
+      const proj = drawSceneProjectedBox(boxTempCtx, {
         centerU: u,
         centerV: v,
         widthM: layer.customWidthM || 1.2,
@@ -587,15 +596,33 @@ function renderScene(targetCtx, forExport = false) {
       });
       layer._lastProjRect = proj;
 
+      // Apply layer.maskCanvas to 3D projected box so ALL canteros & macetas can be masked!
+      boxTempCtx.save();
+      boxTempCtx.globalCompositeOperation = "destination-in";
+      boxTempCtx.drawImage(layer.maskCanvas, proj.x, proj.y, proj.w, proj.h);
+      boxTempCtx.restore();
+
+      // Floor-projected cast shadow under 3D box (rotatable, soft, always on the floor)
       if (layer.shadowOpacity > 0 && proj.floorPts) {
+        const angRad = ((layer.shadowAngle ?? 35) * Math.PI) / 180;
+        const lenPx = ((layer.shadowLength ?? 50) / 100) * Math.max(20, proj.h * 0.9);
+        const sdx = Math.cos(angRad) * lenPx;
+        const sdy = Math.sin(angRad) * lenPx * 0.45;
         targetCtx.save();
-        targetCtx.fillStyle = `rgba(10, 15, 10, ${(layer.shadowOpacity / 100) * 0.35})`;
+        targetCtx.filter = `blur(${layer.shadowBlur ?? 10}px)`;
+        targetCtx.fillStyle = `rgba(8, 12, 8, ${(layer.shadowOpacity / 100) * 0.62})`;
         targetCtx.beginPath();
-        proj.floorPts.forEach(([fx, fy], i) => (i === 0 ? targetCtx.moveTo(fx + 6, fy + 4) : targetCtx.lineTo(fx + 6, fy + 4)));
+        proj.floorPts.forEach(([fx, fy], i) => (i === 0 ? targetCtx.moveTo(fx, fy) : targetCtx.lineTo(fx, fy)));
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.beginPath();
+        proj.floorPts.forEach(([fx, fy], i) => (i === 0 ? targetCtx.moveTo(fx + sdx, fy + sdy) : targetCtx.lineTo(fx + sdx, fy + sdy)));
         targetCtx.closePath();
         targetCtx.fill();
         targetCtx.restore();
       }
+
+      targetCtx.drawImage(boxTempCanvas, 0, 0);
       continue;
     }
 
@@ -606,18 +633,18 @@ function renderScene(targetCtx, forExport = false) {
 
     if (layer.shadowOpacity > 0) {
       targetCtx.save();
-      const shadowAlpha = (layer.shadowOpacity / 100) * 0.65 * Math.max(0.35, 1 - (layer.elevationM || 0) * 0.25);
-      const sx = layer.x + (layer.shadowOffset * rect.w * 0.004);
-      const sy = layer.y - rect.h * 0.02;
-      const rx = rect.w * 0.42;
-      const ry = Math.max(6, rect.h * 0.06);
-      const grad = targetCtx.createRadialGradient(sx, sy, rx * 0.1, sx, sy, rx);
-      grad.addColorStop(0, `rgba(10, 15, 10, ${shadowAlpha})`);
-      grad.addColorStop(0.65, `rgba(10, 15, 10, ${shadowAlpha * 0.45})`);
-      grad.addColorStop(1, "rgba(10, 15, 10, 0)");
-      targetCtx.fillStyle = grad;
+      const shadowAlpha = (layer.shadowOpacity / 100) * 0.68 * Math.max(0.35, 1 - (layer.elevationM || 0) * 0.25);
+      const angRad = ((layer.shadowAngle ?? 35) * Math.PI) / 180;
+      const lenFactor = (layer.shadowLength ?? 50) / 100;
+      const dist = rect.h * 0.35 * lenFactor;
+      const sx = layer.x + Math.cos(angRad) * dist;
+      const sy = (layer.y - Math.max(2, rect.h * 0.02)) + Math.sin(angRad) * dist * 0.32;
+      const rx = rect.w * (0.38 + lenFactor * 0.28);
+      const ry = Math.max(5, rect.w * 0.11);
+      targetCtx.filter = `blur(${layer.shadowBlur ?? 10}px)`;
+      targetCtx.fillStyle = `rgba(8, 12, 8, ${shadowAlpha})`;
       targetCtx.beginPath();
-      targetCtx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2);
+      targetCtx.ellipse(sx, sy, rx, ry, angRad * 0.25, 0, Math.PI * 2);
       targetCtx.fill();
       targetCtx.restore();
     }
@@ -728,7 +755,7 @@ function renderScene(targetCtx, forExport = false) {
       targetCtx.strokeStyle = elevM > 0.02 ? "#38bdf8" : "#10b981";
       targetCtx.lineWidth = 2.5;
       targetCtx.beginPath();
-      targetCtx.ellipse(sel.x, sel.y, Math.max(14, rect.w * 0.28), Math.max(5, rect.w * 0.08), 0, 0, Math.PI * 2);
+      targetCtx.ellipse(sel.x, sel.y - Math.max(3, rect.h * 0.025), Math.max(14, rect.w * 0.34), Math.max(6, rect.w * 0.09), 0, 0, Math.PI * 2);
       targetCtx.stroke();
     }
     if (elevM > 0.02) {
@@ -796,6 +823,21 @@ function renderScene(targetCtx, forExport = false) {
         targetCtx.stroke();
       }
     }
+    targetCtx.restore();
+  }
+
+  // Mask Brush Size Cursor Preview (exact radius ellipse at pointer)
+  if (maskMode && hoverCanvasPos) {
+    targetCtx.save();
+    targetCtx.strokeStyle = "#fbbf24";
+    targetCtx.lineWidth = Math.max(1.5, cw / 550);
+    targetCtx.setLineDash([4, 3]);
+    targetCtx.beginPath();
+    targetCtx.ellipse(hoverCanvasPos.x, hoverCanvasPos.y, brushSize, brushSize, 0, 0, Math.PI * 2);
+    targetCtx.stroke();
+    targetCtx.setLineDash([]);
+    targetCtx.fillStyle = "rgba(251, 191, 36, 0.12)";
+    targetCtx.fill();
     targetCtx.restore();
   }
 
@@ -964,10 +1006,16 @@ function toLayerLocal(layer, cx, cy) {
 
 function paintMaskAt(layer, cx, cy) {
   const rect = getLayerRect(layer);
-  const { rx, ry } = toLayerLocal(layer, cx, cy);
-  let u = (rx + rect.w / 2) / rect.w;
-  if (layer.flip) u = 1 - u;
-  const v = (ry + rect.h) / rect.h;
+  let u, v;
+  if (isHomographyBox(layer)) {
+    u = (cx - rect.x) / Math.max(1, rect.w);
+    v = (cy - rect.y) / Math.max(1, rect.h);
+  } else {
+    const { rx, ry } = toLayerLocal(layer, cx, cy);
+    u = (rx + rect.w / 2) / Math.max(1, rect.w);
+    if (layer.flip) u = 1 - u;
+    v = (ry + rect.h) / Math.max(1, rect.h);
+  }
   if (u < -0.1 || u > 1.1 || v < -0.1 || v > 1.1) return;
 
   const mctx = layer.maskCanvas.getContext("2d");
@@ -1114,8 +1162,17 @@ canvas.addEventListener("pointerdown", (e) => {
   draw();
 });
 
+canvas.addEventListener("pointerleave", () => {
+  hoverCanvasPos = null;
+  if (maskMode) draw();
+});
+
 canvas.addEventListener("pointermove", (e) => {
-  if (!dragState) return;
+  hoverCanvasPos = getCanvasCoords(e);
+  if (!dragState) {
+    if (maskMode) draw();
+    return;
+  }
   if (dragState.type === "pan") {
     viewPanX = dragState.origPanX + (e.clientX - dragState.startClientX);
     viewPanY = dragState.origPanY + (e.clientY - dragState.startClientY);
@@ -1964,8 +2021,12 @@ function syncInspectorValues() {
   document.getElementById("valWarmth").textContent = sel.warmth;
   document.getElementById("ctrlShadowOpacity").value = sel.shadowOpacity;
   document.getElementById("valShadowOpacity").textContent = sel.shadowOpacity + "%";
-  document.getElementById("ctrlShadowOffset").value = sel.shadowOffset;
-  document.getElementById("valShadowOffset").textContent = sel.shadowOffset;
+  document.getElementById("ctrlShadowAngle").value = sel.shadowAngle ?? 35;
+  document.getElementById("valShadowAngle").textContent = (sel.shadowAngle ?? 35) + "°";
+  document.getElementById("ctrlShadowLength").value = sel.shadowLength ?? 50;
+  document.getElementById("valShadowLength").textContent = (sel.shadowLength ?? 50) + "%";
+  document.getElementById("ctrlShadowBlur").value = sel.shadowBlur ?? 10;
+  document.getElementById("valShadowBlur").textContent = (sel.shadowBlur ?? 10) + " px";
   syncBotanicalInspector(sel);
 }
 
@@ -2281,11 +2342,25 @@ document.getElementById("ctrlShadowOpacity").addEventListener("input", (e) => {
   document.getElementById("valShadowOpacity").textContent = e.target.value + "%";
   draw();
 });
-document.getElementById("ctrlShadowOffset").addEventListener("input", (e) => {
+document.getElementById("ctrlShadowAngle").addEventListener("input", (e) => {
   const sel = getSelectedLayer();
   if (!sel) return;
-  sel.shadowOffset = Number(e.target.value);
-  document.getElementById("valShadowOffset").textContent = e.target.value;
+  sel.shadowAngle = Number(e.target.value);
+  document.getElementById("valShadowAngle").textContent = e.target.value + "°";
+  draw();
+});
+document.getElementById("ctrlShadowLength").addEventListener("input", (e) => {
+  const sel = getSelectedLayer();
+  if (!sel) return;
+  sel.shadowLength = Number(e.target.value);
+  document.getElementById("valShadowLength").textContent = e.target.value + "%";
+  draw();
+});
+document.getElementById("ctrlShadowBlur").addEventListener("input", (e) => {
+  const sel = getSelectedLayer();
+  if (!sel) return;
+  sel.shadowBlur = Number(e.target.value);
+  document.getElementById("valShadowBlur").textContent = e.target.value + " px";
   draw();
 });
 document.getElementById("ctrlBrushSize").addEventListener("input", (e) => {
