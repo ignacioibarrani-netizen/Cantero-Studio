@@ -30,8 +30,16 @@ let searchQuery = "";
 let bgImage = null;
 let layers = [];
 let selectedId = null;
+const selectedIds = new Set();
+let autoSelect = true;
 let compareMode = false;
 let maskMode = false;
+let fgMaskMode = false;
+let maskPaintAction = 'erase';
+const fgMaskCanvas = document.createElement('canvas');
+fgMaskCanvas.width = 1000; fgMaskCanvas.height = 714;
+const fgTempCanvas = document.createElement('canvas');
+const fgTempCtx = fgTempCanvas.getContext('2d');
 let brushSize = 28;
 let nextUid = 1;
 
@@ -405,6 +413,25 @@ function clampScaleToPotIfNeeded(layer) {
   }
 }
 
+
+const PLANT_VARIANTS = [
+  { label: "Variante 1/4", flip: false, aspectX: 1.00, bright: 100, sat: 100, warmth: 0 },
+  { label: "Variante 2/4", flip: true,  aspectX: 0.93, bright: 104, sat: 106, warmth: 8 },
+  { label: "Variante 3/4", flip: false, aspectX: 1.08, bright: 95,  sat: 94,  warmth: -6 },
+  { label: "Variante 4/4", flip: true,  aspectX: 0.97, bright: 102, sat: 103, warmth: 4 }
+];
+
+function applyPlantVariant(layer, vIdx) {
+  const idx = ((vIdx % PLANT_VARIANTS.length) + PLANT_VARIANTS.length) % PLANT_VARIANTS.length;
+  const v = PLANT_VARIANTS[idx];
+  layer.variantIdx = idx;
+  layer.flip = v.flip;
+  layer.aspectScaleX = v.aspectX;
+  layer.brightness = v.bright;
+  layer.saturation = v.sat;
+  layer.warmth = v.warmth;
+}
+
 function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = false) {
   const img = imageCache.get(item.src);
   const maskCanvas = document.createElement("canvas");
@@ -420,6 +447,10 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
   const wallRatio = (item.kind === "container" && !item.isGroundSoil) ? (getContainerRenderMeta(item.src).frontWallRatio || 1) : 1;
   const scale = Math.max(0.015, heightMToScale(targetRealH / wallRatio, persp));
 
+  const sameCount = item.kind === "plant" ? layers.filter(l => l.itemId === item.id).length : 0;
+  const vIdx = item.kind === "plant" ? (sameCount % PLANT_VARIANTS.length) : 0;
+  const v = PLANT_VARIANTS[vIdx];
+
   return {
     uid: "layer_" + (nextUid++),
     itemId: item.id,
@@ -432,11 +463,13 @@ function createLayer(item, xNorm, yNorm, heightMOverride = null, flipOverride = 
     scale,
     perspFactor: persp,
     rotation: 0,
-    flip: flipOverride,
-    brightness: 100,
+    variantIdx: vIdx,
+    aspectScaleX: item.kind === 'plant' ? v.aspectX : 1.0,
+    flip: flipOverride || (item.kind === 'plant' ? v.flip : false),
+    brightness: item.kind === 'plant' ? v.bright : 100,
     contrast: 100,
-    saturation: 100,
-    warmth: 0,
+    saturation: item.kind === 'plant' ? v.sat : 100,
+    warmth: item.kind === 'plant' ? v.warmth : 0,
     shadowOpacity: item.isGroundSoil ? 20 : 45,
     shadowAngle: 35,
     shadowLength: 50,
@@ -480,7 +513,7 @@ function getLayerRect(layer) {
   if (!img) return { x: 0, y: 0, w: 0, h: 0 };
   const baseH = canvas.height * layer.scale;
   const aspect = img.naturalWidth / img.naturalHeight;
-  const w = baseH * aspect;
+  const w = baseH * aspect * (layer.aspectScaleX || 1);
   const h = baseH;
   const elevPx = (layer.elevationM || 0) * getHomographyPxPerMeterAt(layer.x, layer.y);
   return {
@@ -672,6 +705,17 @@ function renderScene(targetCtx, forExport = false) {
     if (layer.flip) targetCtx.scale(-1, 1);
     targetCtx.drawImage(tempCanvas, -rect.w / 2, -rect.h, rect.w, rect.h);
     targetCtx.restore();
+  }
+
+  if (bgImage && fgMaskCanvas.width > 0 && fgMaskCanvas.height > 0) {
+    fgTempCanvas.width = cw;
+    fgTempCanvas.height = ch;
+    fgTempCtx.clearRect(0, 0, cw, ch);
+    fgTempCtx.drawImage(bgImage, 0, 0, cw, ch);
+    fgTempCtx.globalCompositeOperation = "destination-in";
+    fgTempCtx.drawImage(fgMaskCanvas, 0, 0, cw, ch);
+    fgTempCtx.globalCompositeOperation = "source-over";
+    targetCtx.drawImage(fgTempCanvas, 0, 0);
   }
 
   if (forExport) return;
@@ -1004,7 +1048,33 @@ function toLayerLocal(layer, cx, cy) {
   };
 }
 
+function paintForegroundMaskAt(cx, cy) {
+  const cw = canvas.width || 1000;
+  const ch = canvas.height || 714;
+  if (fgMaskCanvas.width !== cw || fgMaskCanvas.height !== ch) {
+    fgMaskCanvas.width = cw;
+    fgMaskCanvas.height = ch;
+  }
+  const fctx = fgMaskCanvas.getContext("2d");
+  fctx.save();
+  fctx.globalCompositeOperation = maskPaintAction === "erase" ? "destination-out" : "source-over";
+  const grad = fctx.createRadialGradient(cx, cy, brushSize * 0.35, cx, cy, brushSize);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  fctx.fillStyle = grad;
+  fctx.beginPath();
+  fctx.arc(cx, cy, brushSize, 0, Math.PI * 2);
+  fctx.fill();
+  fctx.restore();
+  draw();
+}
+
 function paintMaskAt(layer, cx, cy) {
+  if (fgMaskMode) {
+    paintForegroundMaskAt(cx, cy);
+    return;
+  }
+  if (!layer) return;
   const rect = getLayerRect(layer);
   let u, v;
   if (isHomographyBox(layer)) {
@@ -1021,13 +1091,13 @@ function paintMaskAt(layer, cx, cy) {
   const mctx = layer.maskCanvas.getContext("2d");
   const mx = u * layer.maskCanvas.width;
   const my = v * layer.maskCanvas.height;
-  const mr = (brushSize / rect.w) * layer.maskCanvas.width;
+  const mr = (brushSize / Math.max(10, rect.w)) * layer.maskCanvas.width;
 
   mctx.save();
-  mctx.globalCompositeOperation = "destination-out";
+  mctx.globalCompositeOperation = maskPaintAction === "erase" ? "destination-out" : "source-over";
   const grad = mctx.createRadialGradient(mx, my, mr * 0.35, mx, my, mr);
-  grad.addColorStop(0, "rgba(0,0,0,1)");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
   mctx.fillStyle = grad;
   mctx.beginPath();
   mctx.arc(mx, my, mr, 0, Math.PI * 2);
@@ -1088,7 +1158,7 @@ canvas.addEventListener("pointerdown", (e) => {
 
   // 3. Mask brush mode
   const sel = getSelectedLayer();
-  if (maskMode && sel) {
+  if (maskMode && (fgMaskMode || sel)) {
     dragState = { type: "mask", layer: sel };
     paintMaskAt(sel, x, y);
     return;
@@ -1115,29 +1185,58 @@ canvas.addEventListener("pointerdown", (e) => {
     }
   }
 
-  // 5. Hit test layers top-to-bottom
+  // 5. Hit test layers (only if autoSelect is ON; otherwise keep inspector selection!)
   let hitLayer = null;
-  for (let i = layers.length - 1; i >= 0; i--) {
-    const l = layers[i];
-    if (!l.visible || l.locked) continue;
-    const rect = getLayerRect(l);
-    if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
-      hitLayer = l;
-      break;
+  if (autoSelect) {
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const l = layers[i];
+      if (!l.visible || l.locked) continue;
+      const rect = getLayerRect(l);
+      if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
+        hitLayer = l;
+        break;
+      }
     }
+  } else {
+    hitLayer = getSelectedLayer();
+    if (hitLayer && (!hitLayer.visible || hitLayer.locked)) hitLayer = null;
   }
 
   if (hitLayer) {
     pushUndoSnapshot();
-    selectedId = hitLayer.uid;
-    // Move hitLayer + its descendants (plant -> only plant; maceta -> maceta + plants; cantero -> all inside)
-    const group = e.altKey ? [hitLayer] : [hitLayer, ...getAllDescendants(hitLayer.uid)];
-    for (const m of group) m._dragStartElevM = m.elevationM || 0;
+    if (e.shiftKey && autoSelect) {
+      if (selectedIds.has(hitLayer.uid) && selectedIds.size > 1) {
+        selectedIds.delete(hitLayer.uid);
+        selectedId = Array.from(selectedIds)[selectedIds.size - 1];
+      } else {
+        selectedIds.add(hitLayer.uid);
+        selectedId = hitLayer.uid;
+      }
+    } else if (!selectedIds.has(hitLayer.uid)) {
+      selectedIds.clear();
+      selectedIds.add(hitLayer.uid);
+      selectedId = hitLayer.uid;
+    } else {
+      selectedId = hitLayer.uid;
+    }
+
     if (e.altKey && (hitLayer.containerUid || hitLayer.parentContainerUid)) {
       hitLayer.containerUid = null;
       hitLayer.parentContainerUid = null;
       showToast(`${hitLayer.name} separada del contenedor`);
     }
+
+    const groupSet = new Set();
+    for (const sid of selectedIds) {
+      const sl = layers.find(x => x.uid === sid);
+      if (!sl || sl.locked) continue;
+      groupSet.add(sl);
+      if (!e.altKey) {
+        for (const d of getAllDescendants(sl.uid)) groupSet.add(d);
+      }
+    }
+    const group = Array.from(groupSet);
+    for (const m of group) m._dragStartElevM = m.elevationM || 0;
 
     dragState = {
       type: "move",
@@ -1155,8 +1254,9 @@ canvas.addEventListener("pointerdown", (e) => {
       shiftLocked: false
     };
     canvas.style.cursor = "grabbing";
-  } else {
+  } else if (autoSelect) {
     selectedId = null;
+    selectedIds.clear();
   }
   syncUI();
   draw();
@@ -1557,7 +1657,24 @@ function renderCatalog() {
     custom: ["Propia", "bg-amber-500/15 text-amber-300 border-amber-500/30"]
   };
 
+  const sectionNames = {
+    arboles: "Árboles Pequeños",
+    trepadoras: "Trepadoras y Enredaderas",
+    cerco: "Cerco y Estructurales",
+    primera: "1ª Fila y Borduras",
+    macetas: "Macetas y Canteros",
+    tierra: "Tierra al Piso",
+    custom: "Mis Plantas"
+  };
+  let lastCat = null;
   for (const item of items) {
+    if (activeFilter === "all" && item.category !== lastCat) {
+      lastCat = item.category;
+      const sep = document.createElement("div");
+      sep.className = "col-span-2 sm:col-span-4 lg:col-span-2 pt-2 pb-1 mt-1 border-t border-zinc-800 first:border-t-0 first:mt-0 text-[10px] font-bold uppercase tracking-wider text-emerald-400/90";
+      sep.textContent = sectionNames[item.category] || item.category;
+      grid.appendChild(sep);
+    }
     const card = document.createElement("div");
     card.className = "group relative text-left bg-zinc-950/70 hover:bg-zinc-800/80 border border-zinc-800 hover:border-emerald-500/50 rounded-lg p-2 transition flex flex-col cursor-pointer";
     const [badgeLabel, badgeColor] = badgeMap[item.category] || badgeMap.custom;
@@ -1658,7 +1775,7 @@ function renderLayersList() {
     if (rendered.has(l.uid)) return;
     rendered.add(l.uid);
 
-    const isSel = l.uid === selectedId;
+    const isSel = selectedIds.has(l.uid) || l.uid === selectedId;
     const realism = evaluateBotanicalRealism(l);
     const hM = getLayerRealHeightM(l);
     const row = document.createElement("div");
@@ -1696,8 +1813,6 @@ function renderLayersList() {
       </div>
       <div class="flex items-center gap-0.5 shrink-0">
         ${depth > 0 ? `<button type="button" class="detach-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-amber-300" title="Sacar al piso (desvincular)">⇤</button>` : ""}
-        <button type="button" class="up-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-100" title="Subir capa">↑</button>
-        <button type="button" class="down-btn px-1 py-0.5 rounded hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-100" title="Bajar capa">↓</button>
         <button type="button" class="lock-btn p-1 rounded hover:bg-zinc-800 ${l.locked ? "text-amber-400" : "text-zinc-500 hover:text-zinc-300"}" title="${l.locked ? "Desbloquear capa" : "Bloquear capa"}">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="${l.locked ? "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" : "M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"}"/>
@@ -1707,6 +1822,9 @@ function renderLayersList() {
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="${l.visible ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18"}"/>
           </svg>
+        </button>
+        <button type="button" class="del-row-btn p-1 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400" title="Eliminar capa">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         </button>
       </div>
     `;
@@ -1730,8 +1848,11 @@ function renderLayersList() {
       if (!dragged) return;
       if (getAllDescendants(dragged.uid).some(d => d.uid === l.uid)) return;
 
-      if (l.kind === "container") {
-        // Nest inside container
+      const rectRow = row.getBoundingClientRect();
+      const relY = (e.clientY - rectRow.top) / Math.max(1, rectRow.height);
+      const dropInMiddle = relY > 0.25 && relY < 0.75;
+
+      if (l.kind === "container" && dropInMiddle) {
         if (dragged.kind === "plant") {
           const ok = await ensureContainerHasSubstrateOrResolve(l, () => {
             dragged.containerUid = l.uid;
@@ -1748,7 +1869,7 @@ function renderLayersList() {
           showToast(`${dragged.name} metida en ${l.name}`);
         }
       } else {
-        // Reorder z-index in layers array
+        pushUndoSnapshot();
         const fromIdx = layers.findIndex(x => x.uid === draggedUid);
         const toIdx = layers.findIndex(x => x.uid === l.uid);
         if (fromIdx >= 0 && toIdx >= 0) {
@@ -1783,25 +1904,34 @@ function renderLayersList() {
         draw();
         return;
       }
-      if (e.target.closest(".up-btn")) {
-        const idx = layers.findIndex(x => x.uid === l.uid);
-        if (idx >= 0 && idx < layers.length - 1) {
-          [layers[idx], layers[idx + 1]] = [layers[idx + 1], layers[idx]];
-          renderLayersList();
-          draw();
+      if (e.target.closest(".del-row-btn")) {
+        pushUndoSnapshot();
+        layers = layers.filter(x => x.uid !== l.uid);
+        for (const x of layers) {
+          if (x.containerUid === l.uid) x.containerUid = null;
+          if (x.parentContainerUid === l.uid) x.parentContainerUid = null;
         }
+        selectedIds.delete(l.uid);
+        if (selectedId === l.uid) {
+          selectedId = selectedIds.size ? Array.from(selectedIds)[0] : (layers.length ? layers[layers.length - 1].uid : null);
+        }
+        syncUI();
+        draw();
         return;
       }
-      if (e.target.closest(".down-btn")) {
-        const idx = layers.findIndex(x => x.uid === l.uid);
-        if (idx > 0) {
-          [layers[idx], layers[idx - 1]] = [layers[idx - 1], layers[idx]];
-          renderLayersList();
-          draw();
+      if (e.shiftKey) {
+        if (selectedIds.has(l.uid) && selectedIds.size > 1) {
+          selectedIds.delete(l.uid);
+          selectedId = Array.from(selectedIds)[selectedIds.size - 1];
+        } else {
+          selectedIds.add(l.uid);
+          selectedId = l.uid;
         }
-        return;
+      } else {
+        selectedIds.clear();
+        selectedIds.add(l.uid);
+        selectedId = l.uid;
       }
-      selectedId = l.uid;
       syncUI();
       draw();
     });
@@ -1977,6 +2107,7 @@ function syncBotanicalInspector(sel) {
   if (document.activeElement !== inPlantH) inPlantH.value = hM.toFixed(2);
   document.getElementById("valPlantWidthM").textContent = formatDimM(wM);
   document.getElementById("valBotanicalRange").textContent = item?.heightLabel || "Personalizada";
+  document.getElementById("valPlantVariant").textContent = PLANT_VARIANTS[sel.variantIdx || 0]?.label || "Variante 1/4";
 
   const select = document.getElementById("ctrlContainerSelect");
   const containers = layers.filter(l => l.kind === "container");
@@ -2009,8 +2140,6 @@ function syncBotanicalInspector(sel) {
 function syncInspectorValues() {
   const sel = getSelectedLayer();
   if (!sel) return;
-  document.getElementById("ctrlRotate").value = sel.rotation;
-  document.getElementById("valRotate").textContent = sel.rotation + "°";
   document.getElementById("ctrlBright").value = sel.brightness;
   document.getElementById("valBright").textContent = sel.brightness + "%";
   document.getElementById("ctrlContrast").value = sel.contrast;
@@ -2070,19 +2199,59 @@ document.getElementById("btnClearCatalogTarget").addEventListener("click", () =>
   showToast("Modo libre: las plantas nuevas se agregan al piso");
 });
 
-function setMaskMode(active) {
+function updateMaskActionButtons() {
+  const bErase = document.getElementById("btnMaskErase");
+  const bRest = document.getElementById("btnMaskRestore");
+  if (fgMaskMode) {
+    bErase.textContent = "Quitar primer plano";
+    bRest.textContent = "Pintar primer plano";
+  } else {
+    bErase.textContent = "Ocultar (Borrar)";
+    bRest.textContent = "Restaurar (Agregar)";
+  }
+  if (maskPaintAction === "erase") {
+    bErase.className = "px-2 py-0.5 text-[11px] font-semibold bg-amber-500 text-zinc-950";
+    bRest.className = "px-2 py-0.5 text-[11px] font-medium bg-zinc-900 text-amber-200 hover:bg-zinc-800";
+  } else {
+    bRest.className = "px-2 py-0.5 text-[11px] font-semibold bg-emerald-500 text-zinc-950";
+    bErase.className = "px-2 py-0.5 text-[11px] font-medium bg-zinc-900 text-amber-200 hover:bg-zinc-800";
+  }
+}
+
+function setMaskMode(active, isForeground = false) {
   maskMode = active;
+  fgMaskMode = active ? isForeground : false;
   if (active) setCalibrationMode(false);
   const banner = document.getElementById("maskBanner");
   const btnText = document.getElementById("maskBtnText");
   const btn = document.getElementById("btnToggleMask");
+  const fgBtn = document.getElementById("btnForegroundMask");
+  const clearFgBtn = document.getElementById("btnClearFgMask");
+  const titleEl = document.getElementById("maskModeTitle");
+
   if (active) {
     banner.classList.remove("hidden");
-    btnText.textContent = "Salir de máscara";
-    btn.classList.add("border-amber-500", "bg-amber-500/20");
+    if (isForeground) {
+      maskPaintAction = "restore";
+      titleEl.textContent = "Primer plano de la foto (delante de todo):";
+      clearFgBtn.classList.remove("hidden");
+      fgBtn.classList.add("tool-btn-active");
+      btnText.textContent = "Pintar máscara";
+      btn.classList.remove("border-amber-500", "bg-amber-500/20");
+    } else {
+      maskPaintAction = "erase";
+      titleEl.textContent = "Máscara de capa:";
+      clearFgBtn.classList.add("hidden");
+      fgBtn.classList.remove("tool-btn-active");
+      btnText.textContent = "Salir de máscara";
+      btn.classList.add("border-amber-500", "bg-amber-500/20");
+    }
+    updateMaskActionButtons();
     canvas.style.cursor = "crosshair";
   } else {
     banner.classList.add("hidden");
+    clearFgBtn.classList.add("hidden");
+    fgBtn.classList.remove("tool-btn-active");
     btnText.textContent = "Pintar máscara";
     btn.classList.remove("border-amber-500", "bg-amber-500/20");
     canvas.style.cursor = "grab";
@@ -2139,15 +2308,17 @@ function setPerspectiveVisible(active) {
 }
 
 function deleteSelectedLayer() {
-  if (!selectedId) return;
+  const toRemove = selectedIds.size ? new Set(selectedIds) : (selectedId ? new Set([selectedId]) : null);
+  if (!toRemove || toRemove.size === 0) return;
   pushUndoSnapshot();
-  const removed = selectedId;
-  layers = layers.filter(l => l.uid !== removed);
+  layers = layers.filter(l => !toRemove.has(l.uid));
   for (const l of layers) {
-    if (l.containerUid === removed) l.containerUid = null;
-    if (l.parentContainerUid === removed) l.parentContainerUid = null;
+    if (toRemove.has(l.containerUid)) l.containerUid = null;
+    if (toRemove.has(l.parentContainerUid)) l.parentContainerUid = null;
   }
+  selectedIds.clear();
   selectedId = layers.length ? layers[layers.length - 1].uid : null;
+  if (selectedId) selectedIds.add(selectedId);
   setMaskMode(false);
   syncUI();
   draw();
@@ -2298,13 +2469,6 @@ document.getElementById("ctrlPlantHeightM").addEventListener("input", (e) => {
   clampScaleToPotIfNeeded(sel);
   document.getElementById("valPlantWidthM").textContent = formatDimM(getLayerRealWidthM(sel));
   renderLayersList();
-  draw();
-});
-document.getElementById("ctrlRotate").addEventListener("input", (e) => {
-  const sel = getSelectedLayer();
-  if (!sel) return;
-  sel.rotation = Number(e.target.value);
-  document.getElementById("valRotate").textContent = e.target.value + "°";
   draw();
 });
 document.getElementById("ctrlBright").addEventListener("input", (e) => {
@@ -2508,7 +2672,6 @@ document.getElementById("btnClearMask").addEventListener("click", () => {
   showToast("Máscara restaurada");
 });
 
-document.getElementById("btnDeleteLayer").addEventListener("click", deleteSelectedLayer);
 
 // PNG Background & Halo Cleaner
 function processPngCleaner(img, tol, feather, defringePx, floodOnly) {
@@ -3108,7 +3271,10 @@ async function loadDemoScene() {
     createLayer(byId("formio_rubra"), 0.35, 0.72, 0.85, false),
     createLayer(byId("agapanto"), 0.22, 0.76, 0.75, false)
   ];
+  fgMaskCanvas.width = canvas.width; fgMaskCanvas.height = canvas.height; fgMaskCanvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+  selectedIds.clear();
   selectedId = layers[1].uid;
+  selectedIds.add(selectedId);
   setMaskMode(false);
   setCalibrationMode(false);
   setPerspectiveVisible(false);
@@ -3152,4 +3318,147 @@ document.getElementById("btnMenuZoomIn").addEventListener("click", () => setView
 document.getElementById("btnMenuZoomOut").addEventListener("click", () => setViewerZoom(viewZoom * 0.82));
 document.getElementById("btnMenuZoomReset").addEventListener("click", () => {
   viewZoom = 1; viewPanX = 0; viewPanY = 0; applyViewTransform();
+});
+
+
+// Auto-select toggle
+document.getElementById("chkAutoSelect").addEventListener("change", (e) => {
+  autoSelect = e.target.checked;
+  showToast(autoSelect ? "Auto-select activado" : "Auto-select desactivado (elegí capas desde la lista)");
+});
+
+// Foreground Photo Mask & Erase/Restore toggles
+document.getElementById("btnForegroundMask").addEventListener("click", () => {
+  setMaskMode(!(maskMode && fgMaskMode), true);
+});
+document.getElementById("btnMaskErase").addEventListener("click", () => {
+  maskPaintAction = "erase";
+  updateMaskActionButtons();
+});
+document.getElementById("btnMaskRestore").addEventListener("click", () => {
+  maskPaintAction = "restore";
+  updateMaskActionButtons();
+});
+document.getElementById("btnClearFgMask").addEventListener("click", () => {
+  fgMaskCanvas.getContext("2d").clearRect(0, 0, fgMaskCanvas.width, fgMaskCanvas.height);
+  draw();
+  showToast("Primer plano de foto limpiado");
+});
+
+// Cycle Plant Variant in Inspector
+document.getElementById("btnCycleVariant").addEventListener("click", () => {
+  const sel = getSelectedLayer();
+  if (!sel || sel.kind !== "plant") return;
+  pushUndoSnapshot();
+  applyPlantVariant(sel, (sel.variantIdx || 0) + 1);
+  syncInspectorValues();
+  draw();
+  showToast(PLANT_VARIANTS[sel.variantIdx].label);
+});
+
+// Save & Load Project (.json)
+function serializeProject() {
+  return {
+    version: 2,
+    savedAt: new Date().toISOString(),
+    bgSrc: bgImage ? bgImage.src : null,
+    canvasW: canvas.width,
+    canvasH: canvas.height,
+    perspective: {
+      visible: false,
+      autoScale: perspective.autoScale,
+      showFloorGrid: perspective.showFloorGrid,
+      fspy: perspective.fspy
+    },
+    fgMaskSrc: fgMaskCanvas.toDataURL("image/png"),
+    layers: layers.map(l => ({
+      ...l,
+      maskSrc: l.maskCanvas.toDataURL("image/png"),
+      maskCanvas: undefined,
+      _lastProjRect: undefined
+    }))
+  };
+}
+
+async function restoreProjectData(data) {
+  if (!data || !Array.isArray(data.layers)) return;
+  if (data.bgSrc) {
+    const bg = await loadImage(data.bgSrc);
+    if (bg) {
+      bgImage = bg;
+      canvas.width = data.canvasW || bg.naturalWidth;
+      canvas.height = data.canvasH || bg.naturalHeight;
+    }
+  }
+  if (data.perspective?.fspy) {
+    perspective.fspy = data.perspective.fspy;
+    perspective.autoScale = data.perspective.autoScale ?? true;
+    perspective.showFloorGrid = data.perspective.showFloorGrid ?? true;
+    document.getElementById("ctrlFspyRefMeters").value = perspective.fspy.refMeters || 1.5;
+    document.getElementById("ctrlFspyRefType").value = perspective.fspy.refType || "auto";
+    document.getElementById("chkShowFloorGrid").checked = perspective.showFloorGrid;
+    document.getElementById("chkAutoPerspective").checked = perspective.autoScale;
+  }
+  rebuildGroundHomography();
+
+  fgMaskCanvas.width = canvas.width;
+  fgMaskCanvas.height = canvas.height;
+  fgMaskCanvas.getContext("2d").clearRect(0, 0, fgMaskCanvas.width, fgMaskCanvas.height);
+  if (data.fgMaskSrc) {
+    const fimg = await loadImage(data.fgMaskSrc);
+    if (fimg) fgMaskCanvas.getContext("2d").drawImage(fimg, 0, 0, fgMaskCanvas.width, fgMaskCanvas.height);
+  }
+
+  const restoredLayers = [];
+  for (const raw of data.layers) {
+    await loadImage(raw.src);
+    const mc = document.createElement("canvas");
+    const img = imageCache.get(raw.src);
+    mc.width = img ? img.naturalWidth : 500;
+    mc.height = img ? img.naturalHeight : 500;
+    const mctx = mc.getContext("2d");
+    if (raw.maskSrc) {
+      const mimg = await loadImage(raw.maskSrc);
+      if (mimg) mctx.drawImage(mimg, 0, 0, mc.width, mc.height);
+    } else {
+      mctx.fillStyle = "#ffffff";
+      mctx.fillRect(0, 0, mc.width, mc.height);
+    }
+    const copy = { ...raw, maskCanvas: mc };
+    delete copy.maskSrc;
+    restoredLayers.push(copy);
+  }
+  layers = restoredLayers;
+  selectedIds.clear();
+  selectedId = layers.length ? layers[layers.length - 1].uid : null;
+  if (selectedId) selectedIds.add(selectedId);
+  syncUI();
+  draw();
+}
+
+document.getElementById("btnSaveProject").addEventListener("click", () => {
+  const proj = serializeProject();
+  const blob = new Blob([JSON.stringify(proj)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `proyecto-cantero-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  showToast("Proyecto guardado (.json)");
+});
+
+document.getElementById("projectLoadInput").addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const parsed = JSON.parse(ev.target.result);
+      await restoreProjectData(parsed);
+      showToast("Proyecto cargado");
+    } catch {
+      showToast("No se pudo leer el archivo de proyecto");
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
 });

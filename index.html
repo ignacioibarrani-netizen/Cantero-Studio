@@ -45,6 +45,14 @@
             <span>Cargar nueva planta</span>
           </button>
           <div class="my-1 border-t border-zinc-800"></div>
+          <button id="btnSaveProject" type="button" class="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-zinc-800 text-emerald-300 font-medium">
+            <span>Guardar proyecto (.json)</span>
+          </button>
+          <label class="cursor-pointer flex items-center gap-2 px-3 py-2 hover:bg-zinc-800 text-zinc-200">
+            <span>Abrir proyecto (.json)</span>
+            <input id="projectLoadInput" type="file" accept=".json,application/json" class="hidden" />
+          </label>
+          <div class="my-1 border-t border-zinc-800"></div>
           <button id="btnResetDemo" type="button" class="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-zinc-800 text-zinc-300">
             <span>Restaurar escena Demo</span>
           </button>
@@ -58,6 +66,15 @@
       </button>
 
       <!-- Unified fSpy-style 3D Camera Calibration -->
+      <label class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200 cursor-pointer hover:bg-zinc-700 transition" title="Si está desactivado, solo seleccionás capas desde la lista derecha">
+        <input id="chkAutoSelect" type="checkbox" checked class="accent-emerald-500" />
+        <span>Auto-select</span>
+      </label>
+
+      <button id="btnForegroundMask" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-amber-200 border border-zinc-700 transition" title="Pintar zonas de la foto que quedan por delante de todas las plantas (barandas, columnas)">
+        <span>Primer plano foto</span>
+      </button>
+
       <button id="btnPerspective" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-xs font-medium text-violet-200 border border-violet-500/40 transition" title="Calibrar perspectiva 3D con líneas de fuga (estilo fSpy)">
         <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20L8 4h8l4 16H4zm2.5-8h11M12 4v16"/></svg>
         <span>Perspectiva 3D</span>
@@ -143,9 +160,14 @@
     <main class="flex-1 h-full bg-zinc-950 relative flex flex-col items-center justify-center p-2 sm:p-3 overflow-hidden min-h-[340px]">
 
       <!-- Mode Banners -->
-      <div id="maskBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2 z-20 shrink-0">
+      <div id="maskBanner" class="hidden mb-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex flex-wrap items-center gap-2 z-20 shrink-0">
         <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-        <span>Modo Máscara activo: pintá sobre la planta para ocultarla detrás de una maceta o baranda</span>
+        <span id="maskModeTitle" class="font-medium">Máscara:</span>
+        <div class="inline-flex rounded-md overflow-hidden border border-amber-500/40">
+          <button id="btnMaskErase" type="button" class="px-2 py-0.5 text-[11px] font-semibold bg-amber-500 text-zinc-950">Ocultar</button>
+          <button id="btnMaskRestore" type="button" class="px-2 py-0.5 text-[11px] font-medium bg-zinc-900 text-amber-200 hover:bg-zinc-800">Restaurar</button>
+        </div>
+        <button id="btnClearFgMask" type="button" class="hidden px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-200">Limpiar primer plano</button>
         <button id="btnExitMask" type="button" class="ml-1 px-2 py-0.5 rounded bg-amber-500 text-zinc-950 font-semibold text-[11px] hover:bg-amber-400">Listo</button>
       </div>
 
@@ -206,7 +228,7 @@
         <span>•</span>
         <span>Arrastrar + <kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Shift</kbd> = solo subir/bajar</span>
         <span>•</span>
-        <span><kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Ctrl+Z</kbd> = deshacer</span>
+        <span><kbd class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Shift+Clic</kbd> = multiselección</span>
         <span>•</span>
         <span>Supr = borrar</span>
       </div>
@@ -242,6 +264,12 @@
             <div class="flex items-center justify-between text-[11px]">
               <span class="text-zinc-400">Rango natural</span>
               <span id="valBotanicalRange" class="text-zinc-300">1.4 – 3.0 m</span>
+            </div>
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-zinc-400">Variante visual</span>
+              <button id="btnCycleVariant" type="button" class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-emerald-300 font-medium transition">
+                <span id="valPlantVariant">Variante 1/4</span> ↻
+              </button>
             </div>
             <div>
               <label class="block text-[11px] text-zinc-400 mb-1">Maceta / Cantero / Tierra</label>
@@ -363,10 +391,6 @@
                 <button id="btnResetColor" type="button" class="text-[10px] text-emerald-400 hover:underline">Reset luz</button>
               </div>
               <div>
-                <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Inclinación 2D</span><span id="valRotate" class="text-zinc-300">0°</span></div>
-                <input id="ctrlRotate" type="range" min="-25" max="25" value="0" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
-              </div>
-              <div>
                 <div class="flex justify-between text-[11px] mb-0.5"><span class="text-zinc-400">Brillo</span><span id="valBright" class="text-zinc-300">100%</span></div>
                 <input id="ctrlBright" type="range" min="40" max="170" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg cursor-pointer" />
               </div>
@@ -424,9 +448,6 @@
             </div>
           </details>
 
-          <button id="btnDeleteLayer" type="button" class="w-full px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-medium transition">
-            Eliminar capa seleccionada
-          </button>
         </div>
       </div>
 

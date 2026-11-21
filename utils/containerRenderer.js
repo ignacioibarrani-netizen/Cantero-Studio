@@ -360,24 +360,23 @@ function renderBoxContainer(shape, materialId, colorId, yawDeg, pitchDeg, perspS
 }
 
 function renderCylinderContainer(materialId, colorId, yawDeg, pitchDeg, isEmpty, customWidthM, customHeightM) {
-  const cw = 420;
-  const ch = 460;
+  const pitchFactor = Math.sin((Math.max(6, Math.min(68, pitchDeg)) * Math.PI) / 180);
+  const aspect = customWidthM && customHeightM ? Math.max(0.5, Math.min(2.2, customWidthM / customHeightM)) : 1;
+  const topRx = Math.round(130 * Math.min(1.4, aspect));
+  const topRy = Math.max(14, Math.round(92 * pitchFactor));
+  const botRx = Math.round(topRx * 0.8);
+  const botRy = Math.max(10, Math.round(72 * pitchFactor));
+  const topY = 6 + topRy;
+  const botY = topY + Math.round(280 * Math.cos((pitchDeg * Math.PI) / 220));
+  const cw = Math.max(320, topRx * 2 + 16);
+  const ch = botY + botRy + 2;
+  const cx = cw / 2;
   const canvas = document.createElement("canvas");
   canvas.width = cw;
   canvas.height = ch;
   const ctx = canvas.getContext("2d");
   const colorSpec = getColorSpec(materialId, colorId);
   const tex = texCache.get(materialId);
-
-  const pitchFactor = Math.sin((Math.max(6, Math.min(68, pitchDeg)) * Math.PI) / 180);
-  const aspect = customWidthM && customHeightM ? Math.max(0.5, Math.min(2.2, customWidthM / customHeightM)) : 1;
-  const cx = cw / 2;
-  const topRx = Math.round(130 * Math.min(1.4, aspect));
-  const topRy = Math.max(14, Math.round(92 * pitchFactor));
-  const botRx = Math.round(topRx * 0.8);
-  const botRy = Math.max(10, Math.round(72 * pitchFactor));
-  const topY = 26 + topRy;
-  const botY = Math.min(ch - 20 - botRy, topY + Math.round(310 * Math.cos((pitchDeg * Math.PI) / 220)));
 
   ctx.save();
   ctx.beginPath();
